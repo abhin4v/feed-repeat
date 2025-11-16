@@ -28,6 +28,7 @@ import Network.HTTP.Simple qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Options.Applicative qualified as Opt
 import System.Directory (createDirectoryIfMissing)
+import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.Random (randomRIO)
 import Text.Atom.Feed qualified as Atom
@@ -36,52 +37,7 @@ import Text.Feed.Import qualified as Feed
 import Text.Feed.Query qualified as Feed
 import Text.Feed.Types qualified as Feed
 
-halfLifeDays :: Double
-halfLifeDays = 7
-
 data LogLevel = Info | Error | Debug deriving (Show)
-
-logMsg :: LogLevel -> String -> IO ()
-logMsg level msg = do
-  now <- getCurrentTime
-  tz <- getCurrentTimeZone
-  let localTime = utcToLocalTime tz now
-  let timestamp = formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" localTime
-  putStrLn $ timestamp <> " [" <> show level <> "] " <> msg
-
-itemToAtomEntry :: Feed.Item -> IO Atom.Entry
-itemToAtomEntry item = case item of
-  Feed.AtomItem atomEntry -> return atomEntry
-  _ -> do
-    let title = Feed.getItemTitle item
-        link = Feed.getItemLink item
-        pubDate = join (Feed.getItemPublishDate item :: Maybe (Maybe UTCTime))
-        desc = Feed.getItemDescription item
-        entryId = fromMaybe "" link
-        entryTitle = Atom.TextString $ fromMaybe "" title
-        entryUpdated = T.pack $ maybe "" iso8601Show pubDate
-    let entry =
-          (Atom.nullEntry entryId entryTitle entryUpdated)
-            { Atom.entryLinks = [Atom.nullLink $ fromMaybe "" link],
-              Atom.entryContent = Atom.HTMLContent <$> desc
-            }
-    if T.null (Atom.entryId entry)
-      then do
-        uuid <- nextRandom
-        return entry {Atom.entryId = T.pack $ "urn:uuid:" <> show uuid}
-      else return entry
-
-feedToAtom :: Feed.Feed -> IO Atom.Feed
-feedToAtom feed = do
-  let title = Feed.getFeedTitle feed
-      link = Feed.getFeedHome feed
-      pubDate = Feed.getFeedPubDate feed
-      feedId = fromMaybe "" link
-      feedTitle = Atom.TextString title
-      feedUpdated = fromMaybe "" pubDate
-      baseFeed = Atom.nullFeed feedId feedTitle feedUpdated
-  entries <- mapM itemToAtomEntry (Feed.getFeedItems feed)
-  return baseFeed {Atom.feedEntries = entries, Atom.feedLinks = [Atom.nullLink feedId]}
 
 data Config = Config
   { source :: String,
@@ -108,15 +64,18 @@ main = do
         )
   createResult <- try $ createDirectoryIfMissing True (outputDir options)
   case createResult of
-    Left e ->
+    Left e -> do
       logMsg Error $
         "Failed to create output directory: " <> displayException (e :: IOException)
+      exitFailure
     Right _ -> do
       result <-
-        Yaml.decodeFileEither (configPath options) ::
-          IO (Either Yaml.ParseException [Config])
+        Yaml.decodeFileEither (configPath options) :: IO (Either Yaml.ParseException [Config])
       case result of
-        Left err -> logMsg Error $ "Error reading config: " <> show err
+        Left err -> do
+          logMsg Error $ "Error reading config: " <> show err
+          exitFailure
+        Right configs | null configs -> logMsg Error "No configs found in file" >> exitFailure
         Right configs -> do
           validationResults <- forM configs $ \c -> do
             res <- try $ HTTP.parseRequest (source c) :: IO (Either HTTP.HttpException HTTP.Request)
@@ -127,6 +86,7 @@ main = do
             then do
               logMsg Error "Invalid URLs in config:"
               mapM_ (\c -> logMsg Error $ "  " <> source c) invalidConfigs
+              exitFailure
             else mapM_ (\c -> processConfig c (outputDir options)) validConfigs
 
 optionsParser :: Opt.Parser Options
@@ -143,32 +103,6 @@ optionsParser =
           <> Opt.help "Directory where output Atom files will be written"
       )
       Opt.<**> Opt.helper
-
-computeWeight :: UTCTime -> Atom.Entry -> Double
-computeWeight now entry = case Feed.getItemPublishDate (Feed.AtomItem entry) of
-  Nothing -> 1
-  Just Nothing -> 1
-  Just (Just updated) ->
-    let age = diffUTCTime now updated
-     in if age > 0 then exp (realToFrac age / (86400 * halfLifeDays)) else 1
-
-selectEntries :: Int -> [Atom.Entry] -> IO [Atom.Entry]
-selectEntries n entries = do
-  now <- getCurrentTime
-  let weights = map (computeWeight now) entries
-  select n entries weights []
-
-select :: Int -> [Atom.Entry] -> [Double] -> [Atom.Entry] -> IO [Atom.Entry]
-select 0 _ _ acc = return acc
-select k es ws acc = do
-  let total = sum ws
-  r <- randomRIO (0, total)
-  let cumulative = scanl (+) 0 ws
-  let idx = min (length es - 1) $ fromMaybe 0 $ findIndex (> r) cumulative
-  let selected = es !! idx
-  let newEs = take idx es <> drop (idx + 1) es
-  let newWs = take idx ws <> drop (idx + 1) ws
-  select (k - 1) newEs newWs (selected : acc)
 
 processConfig :: Config -> FilePath -> IO ()
 processConfig config outputDir = do
@@ -271,6 +205,40 @@ fetchFeed url = do
             Nothing -> return $ Left "Failed to parse feed"
             Just feed -> do atomFeed <- feedToAtom feed; return $ Right atomFeed
 
+feedToAtom :: Feed.Feed -> IO Atom.Feed
+feedToAtom feed = do
+  let title = Feed.getFeedTitle feed
+      link = Feed.getFeedHome feed
+      pubDate = Feed.getFeedPubDate feed
+      feedId = fromMaybe "" link
+      feedTitle = Atom.TextString title
+      feedUpdated = fromMaybe "" pubDate
+      baseFeed = Atom.nullFeed feedId feedTitle feedUpdated
+  entries <- mapM itemToAtomEntry (Feed.getFeedItems feed)
+  return baseFeed {Atom.feedEntries = entries, Atom.feedLinks = [Atom.nullLink feedId]}
+  where
+    itemToAtomEntry :: Feed.Item -> IO Atom.Entry
+    itemToAtomEntry item = case item of
+      Feed.AtomItem atomEntry -> return atomEntry
+      _ -> do
+        let title = Feed.getItemTitle item
+            link = Feed.getItemLink item
+            pubDate = join (Feed.getItemPublishDate item :: Maybe (Maybe UTCTime))
+            desc = Feed.getItemDescription item
+            entryId = fromMaybe "" link
+            entryTitle = Atom.TextString $ fromMaybe "" title
+            entryUpdated = T.pack $ maybe "" iso8601Show pubDate
+        let entry =
+              (Atom.nullEntry entryId entryTitle entryUpdated)
+                { Atom.entryLinks = [Atom.nullLink $ fromMaybe "" link],
+                  Atom.entryContent = Atom.HTMLContent <$> desc
+                }
+        if T.null (Atom.entryId entry)
+          then do
+            uuid <- nextRandom
+            return entry {Atom.entryId = T.pack $ "urn:uuid:" <> show uuid}
+          else return entry
+
 mergeFeeds :: Atom.Feed -> Atom.Feed -> IO Atom.Feed
 mergeFeeds saved new = do
   let allEntries = Atom.feedEntries saved <> Atom.feedEntries new
@@ -280,6 +248,35 @@ mergeFeeds saved new = do
           (\a b -> Feed.getItemLink (Feed.AtomItem a) == Feed.getItemLink (Feed.AtomItem b))
           sortedEntries
   return saved {Atom.feedEntries = uniqueEntries}
+
+selectEntries :: Int -> [Atom.Entry] -> IO [Atom.Entry]
+selectEntries n entries = do
+  now <- getCurrentTime
+  let weights = map (computeWeight now) entries
+  select n entries weights []
+  where
+    halfLifeDays :: Double
+    halfLifeDays = 7
+
+    computeWeight :: UTCTime -> Atom.Entry -> Double
+    computeWeight now entry = case Feed.getItemPublishDate (Feed.AtomItem entry) of
+      Nothing -> 1
+      Just Nothing -> 1
+      Just (Just updated) ->
+        let age = diffUTCTime now updated
+         in if age > 0 then exp (realToFrac age / (86400 * halfLifeDays)) else 1
+
+    select :: Int -> [Atom.Entry] -> [Double] -> [Atom.Entry] -> IO [Atom.Entry]
+    select 0 _ _ acc = return acc
+    select k es ws acc = do
+      let total = sum ws
+      r <- randomRIO (0, total)
+      let cumulative = scanl (+) 0 ws
+      let idx = min (length es - 1) $ fromMaybe 0 $ findIndex (> r) cumulative
+      let selected = es !! idx
+      let newEs = take idx es <> drop (idx + 1) es
+      let newWs = take idx ws <> drop (idx + 1) ws
+      select (k - 1) newEs newWs (selected : acc)
 
 readOutputFile :: FilePath -> String -> IO (Either String Atom.Feed)
 readOutputFile dir name = do
@@ -304,3 +301,11 @@ readOutputFile dir name = do
               <> " entries"
           return $ Right af
         _ -> return $ Left $ "File is not Atom: " <> filePath
+
+logMsg :: LogLevel -> String -> IO ()
+logMsg level msg = do
+  now <- getCurrentTime
+  tz <- getCurrentTimeZone
+  let localTime = utcToLocalTime tz now
+  let timestamp = formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" localTime
+  putStrLn $ timestamp <> " [" <> show level <> "] " <> msg
