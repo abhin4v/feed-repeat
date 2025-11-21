@@ -1,4 +1,7 @@
 cache
 output
-result
-*.atom
+result*
+.hie
+dist-newstyle
+.gcroots
+.ghc.environment*

@@ -1,0 +1,58 @@
+cabal-version: 3.4
+name:          feed-repeat
+version:       0.1.0.0
+author:        Abhinav Sarkar
+maintainer:    Abhinav Sarkar
+license:       MIT
+license-file:  LICENSE
+build-type:    Simple
+category:      Web
+
+common common-config
+  build-depends:
+    , base        >=4.18 && <5
+    , bytestring
+    , directory
+    , either
+    , filepath
+    , hashable
+    , text        >=2.0
+
+  default-language:   GHC2021
+  default-extensions:
+    DuplicateRecordFields
+    LambdaCase
+    OverloadedRecordDot
+    OverloadedStrings
+    RecordWildCards
+    StrictData
+
+  ghc-options:
+    -Weverything -Wno-all-missed-specialisations -Wno-deriving-typeable
+    -Wno-implicit-prelude -Wno-incomplete-uni-patterns
+    -Wno-missing-role-annotations -Wno-missed-specialisations
+    -Wno-missing-deriving-strategies -Wno-missing-export-lists
+    -Wno-missing-exported-signatures -Wno-missing-home-modules
+    -Wno-missing-import-lists -Wno-missing-local-signatures
+    -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction
+    -Wno-name-shadowing -Wno-prepositive-qualified-module -Wno-safe
+    -Wno-type-defaults -Wno-unsafe -Wno-unused-packages
+    -Wno-missing-kind-signatures -Wno-redundant-bang-patterns
+
+executable feed-repeat
+  import:         common-config
+  main-is:        Main.hs
+  hs-source-dirs: app
+  build-depends:
+    , aeson
+    , feed
+    , http-client
+    , http-conduit
+    , http-types
+    , optparse-applicative
+    , random
+    , time
+    , uuid
+    , yaml
+
+  ghc-options:    -funbox-strict-fields -threaded -rtsopts -with-rtsopts=-N

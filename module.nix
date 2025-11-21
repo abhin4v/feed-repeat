@@ -7,7 +7,7 @@
 let
   serviceName = "feed-repeat";
   cfg = config.services.${serviceName};
-  feedRepeatPkg = import ./. { inherit pkgs; };
+  feedRepeatPkg = import ./nix/release.nix { static = true; };
 
   configFile = (pkgs.formats.yaml { }).generate "${serviceName}.yaml" cfg.config;
 in
