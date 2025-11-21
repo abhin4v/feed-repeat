@@ -12,7 +12,7 @@ let
   configFile = (pkgs.formats.yaml { }).generate "${serviceName}.yaml" cfg.config;
 in
 {
-  options.services.feedRepeat = {
+  options.services.feed-repeat = {
     enable = lib.mkEnableOption "feed-repeat service";
 
     config = lib.mkOption {
@@ -109,7 +109,15 @@ in
       createHome = false;
       home = cfg.outputDir;
     };
+    users.users.${config.services.nginx.user} = lib.mkIf cfg.enableNginx {
+      extraGroups = [serviceName];
+    };
     users.groups.${serviceName} = { };
+
+    systemd.tmpfiles.rules = [
+      "d ${cfg.outputDir} 0750 ${serviceName} ${serviceName} -"
+      "d ${cfg.cacheDir} 0750 ${serviceName} ${serviceName} -"
+    ];
 
     systemd.services.${serviceName} = {
       enable = true;
@@ -126,8 +134,6 @@ in
         Group = serviceName;
         Type = "oneshot";
         WorkingDirectory = cfg.outputDir;
-        StateDirectory = cfg.outputDir;
-        CacheDirectory = cfg.cacheDir;
         Restart = "on-failure";
         RestartSec = "5s";
 
