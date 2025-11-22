@@ -52,8 +52,7 @@ import Prelude hiding (writeFile)
 --
 -- For each valid feed, it fetches the latest entries, filters out entries newer than the
 -- minimum age threshold, and selects a random subset for repetition based on weighted
--- sampling where older entries have higher probability (using exponential decay with a
--- configurable half-life).
+-- sampling where older entries have higher probability.
 --
 -- Selected entries are assigned new timestamps and UUIDs, and added to the output file.
 data LogLevel = ERR | WRN | INF | DBG deriving (Show)
