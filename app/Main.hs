@@ -16,7 +16,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 import Data.Either (isRight)
 import Data.Hashable (Hashable, hash)
-import Data.List (findIndex, nubBy, sortBy)
+import Data.List (nubBy, sortBy)
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe, maybeToList)
 import Data.Ord (Down (..), comparing)
 import Data.Text qualified as T
@@ -315,7 +315,6 @@ feedToAtom feed = do
     mkLink rel url = (Atom.nullLink url) {Atom.linkRel = Just $ Left rel}
     mkLinks relsUrls = catMaybes $ map (\(rel, mUrl) -> mkLink rel <$> mUrl) relsUrls
 
-    itemToAtomEntry :: UTCTime -> Feed.Item -> IO Atom.Entry
     itemToAtomEntry now item = case item of
       Feed.AtomItem atomEntry -> return atomEntry
       _ -> do
@@ -363,14 +362,10 @@ mergeFeeds feed1 feed2 =
 selectEntries :: Int -> Integer -> [Atom.Entry] -> IO [Atom.Entry]
 selectEntries n minAgeSeconds entries = do
   now <- getCurrentTime
-  let oldEntries = filter (isOldEnough now) entries
-  let weights = map (computeWeight now) oldEntries
-  select n oldEntries weights []
+  select now $ filter (isOldEnough now) entries
   where
-    halfLifeDays :: Double
     halfLifeDays = 7
 
-    isOldEnough :: UTCTime -> Atom.Entry -> Bool
     isOldEnough currentTime entry =
       case parseDate $ Atom.entryUpdated entry of
         Nothing -> True
@@ -384,18 +379,11 @@ selectEntries n minAgeSeconds entries = do
         let age = diffUTCTime now updated
          in if age > 0 then exp (realToFrac age / (86400 * halfLifeDays)) else 1
 
-    select :: Int -> [Atom.Entry] -> [Double] -> [Atom.Entry] -> IO [Atom.Entry]
-    select 0 _ _ acc = return acc
-    select _ [] _ _ = return []
-    select k es ws acc = do
-      let total = sum ws
-      r <- randomRIO (0, total)
-      let cumulative = scanl (+) 0 ws
-      let idx = min (length es - 1) $ fromMaybe 0 $ findIndex (> r) cumulative
-      let selected = es !! idx
-      let (newEsP, newEsS) = splitAt idx es
-      let (newWsP, newWsS) = splitAt idx ws
-      select (k - 1) (newEsP <> drop 1 newEsS) (newWsP <> drop 1 newWsS) (selected : acc)
+    select now es = do
+      keys <- forM es $ \entry -> do
+        r <- randomRIO (0, 1)
+        return $ r ** (1 / (computeWeight now entry))
+      return $ take n $ map fst $ sortBy (comparing (Down . snd)) $ zip es keys
 
 parseAtomFile :: FilePath -> IO (Either String Atom.Feed)
 parseAtomFile filePath = do
