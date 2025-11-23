@@ -77,9 +77,6 @@ type App a = ExceptT AppError (ReaderT Options IO) a
 minRunGapDays :: Int
 minRunGapDays = 1
 
-selectWeightDoublingDays :: Double
-selectWeightDoublingDays = 7
-
 requestTimeoutMicros :: Int
 requestTimeoutMicros = 30_000_000 -- 30 sec
 
@@ -184,7 +181,7 @@ processSourceFeed task mOutputFeed sourceFeed = do
   let timestamp = T.pack $ iso8601Show now
       minAgeSeconds = fromIntegral task.minimumEntryAgeDays * 86400
   selectedEntries <-
-    liftIO (selectEntries selectWeightDoublingDays task.repeatedEntryCount minAgeSeconds allEntries)
+    liftIO (selectEntries task.repeatedEntryCount minAgeSeconds allEntries)
       >>= traverse
         ( \e -> do
             entryId <- mkUuidUrn

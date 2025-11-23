@@ -129,7 +129,6 @@ Create a YAML file with a list of feed tasks:
 3. **Filter**: Removes entries younger than `minimumEntryAgeDays`.
 4. **Select**: Randomly selects `repeatedEntryCount` entries using weighted sampling.
    - Weight increases exponentially with entry age.
-   - Doubling occurs every `selectWeightDoublingDays` (7 days).
    - This biases selection toward older entries, making them more likely to be repeated.
 5. **Update**: Assigns new UUIDs and timestamps to the selected entries.
 6. **Write**: Writes combined feed (new selections + existing output entries) to Atom file.
@@ -139,20 +138,33 @@ Run frequency is limited to once per day per feed to avoid thrashing output feed
 
 ## Project Structure
 
-- `app/Main.hs`: Complete application implementation
+- `src/Lib.hs`: Core library implementation
+- `app/Main.hs`: Executable entry point
+- `test/Main.hs`: Test suite
 - `feed-repeat.cabal`: Build configuration
 - `config.yaml`: Example configuration file
 - `nix/`: Nix build files
+- `module.nix`: NixOS module
 
 ## Dependencies
 
+### Core
 - `feed`: RSS/Atom parsing and rendering
-- `http-conduit`, `http-client`: HTTP requests with timeouts
-- `aeson`, `yaml`: Configuration parsing
+- `http-client`, `http-conduit`: HTTP requests with timeouts
 - `time`: Timestamp handling
 - `uuid`: Entry ID generation
+- `random`: Random number generation
 - `mtl`: Monad transformers for error handling
+
+### Executable
+- `aeson`: JSON encoding/decoding
+- `yaml`: YAML configuration parsing
+- `http-types`: HTTP types
 - `optparse-applicative`: CLI argument parsing
+
+### Testing
+- `hspec`: Testing framework
+- `QuickCheck`: Property-based testing
 
 ## License
 

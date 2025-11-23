@@ -117,28 +117,29 @@ mergeFeeds feed1 feed2 =
           sortedEntries
    in feed1 {Atom.feedEntries = uniqueEntries}
 
-selectEntries :: Double -> Int -> Integer -> [Atom.Entry] -> IO [Atom.Entry]
-selectEntries weightDoublingDays n minAgeSeconds entries = do
+selectEntries :: Int -> Integer -> [Atom.Entry] -> IO [Atom.Entry]
+selectEntries n minAgeSeconds entries = do
   now <- getCurrentTime
   select now $ filter (isOldEnough now) entries
   where
     isOldEnough currentTime entry =
       case parseDate $ Atom.entryUpdated entry of
         Nothing -> True
-        Just entryTime -> diffUTCTime currentTime entryTime >= fromInteger minAgeSeconds
+        Just entryTime ->
+          diffUTCTime currentTime entryTime >= fromInteger minAgeSeconds
 
     computeWeight :: UTCTime -> Atom.Entry -> Double
-    computeWeight now entry = case Feed.getItemPublishDate (Feed.AtomItem entry) of
+    computeWeight now entry = case parseDate $ Atom.entryUpdated entry of
       Nothing -> 1
-      Just Nothing -> 1
-      Just (Just updated) ->
+      Just updated ->
         let age = diffUTCTime now updated
-         in if age > 0 then exp (realToFrac age / (86400 * weightDoublingDays)) else 1
+         in if age > 0 then exp (realToFrac age / (86400 * 365)) else 1
 
+    -- A-Res algorithm
     select now es = do
       keys <- forM es $ \entry -> do
         r <- randomRIO (0, 1)
-        return $ r ** (1 / computeWeight now entry)
+        return $ log r / computeWeight now entry
       return $ take n $ map fst $ sortBy (comparing (Down . snd)) $ zip es keys
 
 mkUuidUrn :: (MonadIO m) => m T.Text

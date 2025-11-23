@@ -96,6 +96,7 @@ test-suite tests
     , http-types
     , mtl
     , optparse-applicative
+    , QuickCheck
     , random
     , time
     , uuid
