@@ -22,10 +22,15 @@ let
     set -euo pipefail
     result/bin/feed-repeat --config config.yaml --output-dir output --cache-dir cache
   '';
+  build-docker = pkgs.writeShellScriptBin "build-docker" ''
+    set -euo pipefail
+    nix-build nix/docker.nix
+  '';
 in
 [
   logo
   build
   build-static
+  build-docker
   run
 ]

@@ -131,6 +131,43 @@ For non-NixOS systems, a systemd service file (`configs/feed-repeat.service`) is
    sudo systemctl enable --now feed-repeat.timer
    ```
 
+## Using as a Docker Image
+
+A Docker image can be built with Nix:
+
+```bash
+# Build the Docker image
+build-docker
+
+# Load into Docker daemon
+docker load < result
+
+# Run the container
+docker run \
+  -v /path/to/config.yaml:/etc/feed-repeat/config.yaml:ro \
+  -v feed-repeat-output:/var/lib/feed-repeat \
+  -v feed-repeat-cache:/var/cache/feed-repeat \
+  feed-repeat:latest
+```
+
+The Docker image includes:
+- Static binary built for x86_64-linux
+- CA certificates for HTTPS feed fetching
+- Mount points for configuration, output, and cache directories
+
+### Scheduling Runs
+
+Since the container runs once and exits, you need to schedule it externally:
+
+1. **Host-level cron/systemd** (recommended): Use the host's cron or systemd timer to run the container periodically:
+   ```bash
+   # Via cron: add to crontab (runs daily at 2 AM)
+   0 2 * * * docker run -v /path/to/config.yaml:/etc/feed-repeat/config.yaml:ro -v feed-repeat-output:/var/lib/feed-repeat -v feed-repeat-cache:/var/cache/feed-repeat feed-repeat:latest
+   ```
+1. **Docker Compose**: Orchestrate the container with Docker Compose and an external scheduler like `ofelia`.
+1. **Kubernetes**: If deployed on Kubernetes, use native `CronJob` resources for scheduling.
+1. **Docker Swarm**: Use native scheduled task features if using Docker Swarm.
+
 ## Serving Feeds with a Web Server
 
 To serve the output feeds publicly, you can use any web server. Example configurations are provided for:
