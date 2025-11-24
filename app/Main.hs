@@ -16,6 +16,7 @@ import Data.ByteString qualified as BS
 import Data.Either (isRight)
 import Data.Foldable (traverse_)
 import Data.Hashable (Hashable, hash)
+import Data.List (nub, (\\))
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -164,23 +165,38 @@ run env =
   Yaml.decodeFileEither env.options.configPath >>= \case
     Left err -> logIO env ERR ("Error reading config: " <> show err) >> exitFailure
     Right tasks | null tasks -> logIO env ERR "No tasks found in file" >> exitFailure
-    Right tasks -> do
+    Right tasks ->
+      validateTasks env tasks >>= \case
+        Nothing -> exitFailure
+        Just validated -> forM_ validated $ \task ->
+          runReaderT (runExceptT $ runTask task) env >>= \case
+            Left err -> logIO env ERR $ show err
+            Right _ -> return ()
+
+validateTasks :: Env -> [FeedTask] -> IO (Maybe [FeedTask])
+validateTasks env tasks = do
+  -- Check for duplicate output filenames
+  let outputFilenames = map outputFilename tasks
+  let duplicates = outputFilenames \\ nub outputFilenames
+  if not (null duplicates)
+    then do
+      logIO env ERR "Duplicate output filenames found:"
+      forM_ (nub duplicates) (logIO env ERR . ("  " <>))
+      return Nothing
+    else do
+      -- Check for valid source feed URLs
       validationResults <- forM tasks $ \task -> do
         let URL url = task.sourceFeedUrl
         res <- try @HTTP.HttpException $ HTTP.parseRequest url
         return (task, isRight res)
-      let validTasks = map fst $ filter snd validationResults
       let invalidTasks = map fst $ filter (not . snd) validationResults
       if not (null invalidTasks)
         then do
           logIO env ERR "Invalid source feed URLs in tasks:"
           forM_ invalidTasks $ \task ->
             let URL url = task.sourceFeedUrl in logIO env ERR $ "  " <> url
-          exitFailure
-        else forM_ validTasks $ \task ->
-          runReaderT (runExceptT $ runTask task) env >>= \case
-            Left err -> logIO env ERR $ show err
-            Right _ -> return ()
+          return Nothing
+        else return $ Just tasks
 
 runTask :: FeedTask -> App ()
 runTask task = do
