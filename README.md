@@ -10,13 +10,42 @@ A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetch
 - **Filtering**: Filter entries by minimum age to avoid repeating recent content.
 - **Format conversion**: Automatically converts RSS/RDF feeds to Atom format.
 
+## About & Prerequisites
+
+This project is written in [Haskell](https://www.haskell.org/), a statically-typed functional programming language. You don't need Haskell experience to use this tool, but you'll need the Haskell compiler and build tools installed.
+
+### Installing Haskell
+
+The easiest way to install Haskell is via [GHCup](https://www.haskell.org/ghcup/):
+
+```bash
+# Install GHCup (follow the prompts)
+curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+```
+
+Run GHCup to install GHC (the compiler) and Cabal (the build tool). Alternatively, check your system's package manager (e.g., `apt`, `brew`, `pacman`) for pre-built packages.
+
+### Building Prerequisites
+
+- **GHC 9.10+** (Haskell compiler)
+- **Cabal 3.4+** (Build tool)
+- **Nix** (optional, for `nix` builds and NixOS module support)
+
+Verify your installation:
+
+```bash
+ghc --version
+cabal --version
+```
+
 ## Building
 
-### Prerequisites
+First, clone the repository and navigate into it:
 
-- GHC 9.10+ 
-- Cabal 3.4+
-- (Optional) Nix package and module support
+```bash
+git clone https://code.abhinavsarkar.net/abhin4v/feed-repeat.git
+cd feed-repeat
+```
 
 ### Build with Cabal
 
@@ -25,6 +54,12 @@ cabal build
 ```
 
 ### Build with Nix
+
+Enter the Nix development environment:
+
+```bash
+nix-shell
+```
 
 Available scripts in Nix shell (defined in `scripts.nix`):
 
@@ -89,43 +124,47 @@ The module automatically:
 For non-NixOS systems, a systemd service file (`configs/feed-repeat.service`) is provided. To set it up:
 
 1. **Create user and group**:
-   ```bash
-   sudo useradd -r -s /bin/false feed-repeat
-   ```
+    ```bash
+    sudo useradd -r -s /bin/false feed-repeat
+    ```
 
 2. **Create required directories**:
-   ```bash
-   sudo mkdir -p /var/lib/feed-repeat /var/cache/feed-repeat /etc/feed-repeat
-   sudo chown feed-repeat:feed-repeat /var/lib/feed-repeat /var/cache/feed-repeat
-   sudo chmod 750 /var/lib/feed-repeat /var/cache/feed-repeat
-   ```
+    ```bash
+    sudo mkdir -p /var/lib/feed-repeat /var/cache/feed-repeat /etc/feed-repeat
+    sudo chown feed-repeat:feed-repeat /var/lib/feed-repeat /var/cache/feed-repeat
+    sudo chmod 750 /var/lib/feed-repeat /var/cache/feed-repeat
+    ```
 
-3. **Install the service file**:
-   ```bash
-   sudo cp configs/feed-repeat.service /etc/systemd/system/
-   ```
+3. **Add web server user to feed-repeat group**:
+    ```bash
+    sudo usermod -a -G feed-repeat www-data
+    ```
+    This allows the web server (running as www-data) to read the output feeds from `/var/lib/feed-repeat`. Change the user as appropriate.
 
-4. **Place your configuration**:
-   ```bash
-   sudo cp config.yaml /etc/feed-repeat/config.yaml
-   sudo chown feed-repeat:feed-repeat /etc/feed-repeat/config.yaml
-   sudo chmod 640 /etc/feed-repeat/config.yaml
-   ```
+4. **Install the service file**:
+    ```bash
+    sudo cp configs/feed-repeat.service /etc/systemd/system/
+    ```
 
-5. **Build and install the binary**:
-   ```bash
-   cabal build
-   sudo install -D -m 0755 \
-    dist-newstyle/build/*/ghc-*/feed-repeat-*/x/feed-repeat/build/feed-repeat/feed-repeat \
-    /usr/local/bin/feed-repeat
-   ```
+5. **Place your configuration**:
+    ```bash
+    sudo cp config.yaml /etc/feed-repeat/config.yaml
+    sudo chown feed-repeat:feed-repeat /etc/feed-repeat/config.yaml
+    sudo chmod 640 /etc/feed-repeat/config.yaml
+    ```
 
-6. **Install the timer unit**:
-   ```bash
-   sudo cp configs/feed-repeat.timer /etc/systemd/system/
-   ```
+6. **Build and install the binary**:
+     ```bash
+     cabal install --installdir=/tmp --install-method=copy --overwrite-policy=always
+     sudo install -D -m 0755 /tmp/feed-repeat /usr/local/bin/feed-repeat
+     ```
 
-7. **Enable and start the service**:
+7. **Install the timer unit**:
+    ```bash
+    sudo cp configs/feed-repeat.timer /etc/systemd/system/
+    ```
+
+8. **Enable and start the service**:
    ```bash
    sudo systemctl daemon-reload
    sudo systemctl enable --now feed-repeat.timer
@@ -136,7 +175,7 @@ For non-NixOS systems, a systemd service file (`configs/feed-repeat.service`) is
 A Docker image can be built with Nix:
 
 ```bash
-# Build the Docker image
+# Enter nix-shell, then build the Docker image
 build-docker
 
 # Load into Docker daemon
@@ -160,13 +199,44 @@ The Docker image includes:
 Since the container runs once and exits, you need to schedule it externally:
 
 1. **Host-level cron/systemd** (recommended): Use the host's cron or systemd timer to run the container periodically:
-   ```bash
-   # Via cron: add to crontab (runs daily at 2 AM)
-   0 2 * * * docker run -v /path/to/config.yaml:/etc/feed-repeat/config.yaml:ro -v feed-repeat-output:/var/lib/feed-repeat -v feed-repeat-cache:/var/cache/feed-repeat feed-repeat:latest
-   ```
-1. **Docker Compose**: Orchestrate the container with Docker Compose and an external scheduler like `ofelia`.
-1. **Kubernetes**: If deployed on Kubernetes, use native `CronJob` resources for scheduling.
-1. **Docker Swarm**: Use native scheduled task features if using Docker Swarm.
+    ```bash
+    # Via cron: add to crontab (runs daily at 2 AM)
+    0 2 * * * docker run -v /path/to/config.yaml:/etc/feed-repeat/config.yaml:ro -v feed-repeat-output:/var/lib/feed-repeat -v feed-repeat-cache:/var/cache/feed-repeat feed-repeat:latest
+    ```
+
+2. **Docker Compose with Ofelia**: Use Docker Compose with the Ofelia scheduler to run the container on a schedule:
+    ```yaml
+    version: '3.8'
+    
+    services:
+      feed-repeat:
+        image: feed-repeat:latest
+        volumes:
+          - /path/to/config.yaml:/etc/feed-repeat/config.yaml:ro
+          - feed-repeat-output:/var/lib/feed-repeat
+          - feed-repeat-cache:/var/cache/feed-repeat
+        labels:
+          ofelia: "enabled"
+          ofelia.enabled: "true"
+          ofelia.my-task.schedule: "@daily"
+          ofelia.my-task.command: "/bin/feed-repeat --config /etc/feed-repeat/config.yaml --output-dir /var/lib/feed-repeat --cache-dir /var/cache/feed-repeat"
+    
+      ofelia:
+        image: mcuadros/ofelia:latest
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+        command: daemon --docker
+    
+    volumes:
+      feed-repeat-output:
+      feed-repeat-cache:
+    ```
+    
+    Run with: `docker-compose up -d`
+
+3. **Kubernetes**: If deployed on Kubernetes, use native `CronJob` resources for scheduling.
+
+4. **Docker Swarm**: Use native scheduled task features if using Docker Swarm.
 
 ## Serving Feeds with a Web Server
 
@@ -217,10 +287,11 @@ Create a YAML file with a list of feed tasks:
 ### Configuration Fields
 
 - `sourceFeedUrl` (string, required): URL of the source feed to repeat from.
-- `outputFilename` (string, required): Base filename for output Atom file (`.atom` extension added. automatically)
+- `outputFilename` (string, required): Base filename for output Atom file (`.atom` extension added automatically).
 - `cacheSourceFeed` (boolean, required): Whether to cache the source feed for fallback on network errors.
 - `repeatedEntryCount` (integer, required): Number of entries to select for repetition per run.
 - `minimumEntryAgeDays` (integer, required): Minimum age in days for entries to be eligible for selection.
+- `minRunGapDays` (integer, optional, default: 1): Minimum gap in days between consecutive runs for this feed. Prevents the feed from being processed more frequently than specified.
 
 ## How It Works
 

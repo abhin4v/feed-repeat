@@ -1,13 +1,36 @@
+# feed-repeat configuration
+# This file contains a list of feed tasks, each with its own source and output settings.
+
 - sourceFeedUrl: "https://abhinavsarkar.net/linkblog/feed.atom"
+  # URL of the RSS or Atom feed to fetch entries from (required, string)
+
   outputFilename: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+  # Base filename for the output Atom feed file. The .atom extension is added automatically. (required, string)
+  # Use unique identifiers or descriptive names to avoid filename collisions.
+
   cacheSourceFeed: false
+  # Whether to cache the source feed as a fallback if fetching fails. (required, boolean)
+  # Set to true for critical feeds; set to false if you prefer no output if the source is unavailable.
+
   repeatedEntryCount: 3
+  # Number of entries to randomly select for repetition on each run. (required, integer)
+  # Recommended range: 1-5. Higher values will repeat more entries.
+
   minimumEntryAgeDays: 7
+  # Minimum age in days for entries to be eligible for selection. (required, integer)
+  # Entries newer than this are filtered out. Recommended: 7+ days to avoid repeating recent content.
+  
+  minRunGapDays: 1
+  # Minimum gap in days between consecutive runs for this feed. (optional, integer, default: 1)
+  # Prevents the feed from being processed more frequently than specified.
+  # Example: set to 7 to process this feed at most once per week, even if tool runs daily.
+
 - sourceFeedUrl: "https://abhinavsarkar.net/blogroll/feed.atom"
   outputFilename: "z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4"
   cacheSourceFeed: true
   repeatedEntryCount: 1
   minimumEntryAgeDays: 14
+
 - sourceFeedUrl: "https://akils.mataroa.blog/rss/"
   outputFilename: "12347w6v5u4t3s2r1q0p9o8n7m6l123"
   cacheSourceFeed: true
