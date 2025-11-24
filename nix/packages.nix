@@ -34,6 +34,12 @@ let
   });
   ncurses = pkgs.ncurses.override { enableStatic = true; };
   zlib = pkgs.zlib.static;
+  numactl = pkgs.numactl.overrideAttrs (oldAttrs: {
+    configureFlags = (oldAttrs.configureFlags or []) ++ [
+      "--enable-static"
+      "--disable-shared"
+    ];
+  });
 
   confPkg =
     pkg:
@@ -72,6 +78,7 @@ let
           "--extra-lib-dirs=${libffi}/lib"
           "--extra-lib-dirs=${ncurses}/lib"
           "--extra-lib-dirs=${zlib}/lib"
+          "--extra-lib-dirs=${numactl}/lib"
         ])
       ];
     in
@@ -178,6 +185,7 @@ in
           libffi
           ncurses
           zlib
+          numactl
         ];
       };
     }

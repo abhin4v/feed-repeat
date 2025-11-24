@@ -32,7 +32,6 @@ tools = [
 [hls]
 disable_plugins = [
   "fourmolu",
-  "floskell",
   "stan",
 ]
 

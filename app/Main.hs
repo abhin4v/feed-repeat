@@ -126,7 +126,7 @@ main = do
             <> Opt.progDesc "feed-repeat repeats entries of given feeds into new feeds"
             <> Opt.header "feed-repeat"
         )
-  runningUnderSystemd <- fmap (== Just "1") $ lookupEnv "RUNNING_UNDER_SYSTEMD"
+  runningUnderSystemd <- (== Just "1") <$> lookupEnv "RUNNING_UNDER_SYSTEMD"
   tz <- getCurrentTimeZone
   let env = Env options $ LogConfig runningUnderSystemd tz
   createDirs env [options.outputDir, options.cacheDir]
