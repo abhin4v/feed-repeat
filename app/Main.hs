@@ -10,6 +10,7 @@ import Control.Monad (forM, forM_, when)
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
+import Data.Aeson (withObject, (.!=), (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import Data.ByteString qualified as BS
 import Data.Either (isRight)
@@ -64,10 +65,20 @@ data FeedTask = FeedTask
     outputFilename :: String,
     cacheSourceFeed :: Bool,
     repeatedEntryCount :: Int,
-    minimumEntryAgeDays :: Int
+    minimumEntryAgeDays :: Int,
+    minRunGapDays :: Int
   }
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (Aeson.FromJSON)
+  deriving (Show, Eq, Generic)
+
+instance Aeson.FromJSON FeedTask where
+  parseJSON = withObject "FeedTask" $ \v ->
+    FeedTask
+      <$> v .: "sourceFeedUrl"
+      <*> v .: "outputFilename"
+      <*> v .: "cacheSourceFeed"
+      <*> v .: "repeatedEntryCount"
+      <*> v .: "minimumEntryAgeDays"
+      <*> v .:? "minRunGapDays" .!= 1
 
 data Options = Options
   { configPath :: FilePath,
@@ -76,9 +87,6 @@ data Options = Options
   }
 
 type App a = ExceptT AppError (ReaderT Options IO) a
-
-minRunGapDays :: Int
-minRunGapDays = 1
 
 requestTimeoutMicros :: Int
 requestTimeoutMicros = 30_000_000 -- 30 sec
@@ -153,6 +161,11 @@ runTask task = do
   options <- ask
   let URL url = task.sourceFeedUrl
   logMsg DBG $ "Processing: " <> url
+  logMsg DBG $
+    ("Task params: cacheSourceFeed=" <> show task.cacheSourceFeed)
+      <> (", repeatedEntryCount=" <> show task.repeatedEntryCount)
+      <> (", minimumEntryAgeDays=" <> show task.minimumEntryAgeDays)
+      <> (", minRunGapDays=" <> show task.minRunGapDays)
   now <- liftIO getCurrentTime
   let outputPath = options.outputDir </> task.outputFilename <> ".atom"
 
@@ -163,7 +176,7 @@ runTask task = do
   let outputFeedUpdated = case outputFeed of
         Nothing -> UTCTime (fromGregorian 2000 1 1) 0
         Just outputFeed -> fromMaybe now $ parseDate $ Atom.feedUpdated outputFeed
-  if diffUTCTime now outputFeedUpdated < fromIntegral minRunGapDays * fromIntegral secondsPerDay
+  if diffUTCTime now outputFeedUpdated < fromIntegral task.minRunGapDays * fromIntegral secondsPerDay
     then logMsg INF $ "Skipping run for URL: " <> url
     else do
       fetchCacheFeed task.cacheSourceFeed task.sourceFeedUrl
@@ -216,7 +229,8 @@ processSourceFeed task mOutputFeed sourceFeed = do
   let outputPath = options.outputDir </> task.outputFilename <> ".atom"
   writeFile outputPath content
   tryOrThrow IOError $
-    setFileMode outputPath $ foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
+    setFileMode outputPath $
+      foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
   logMsg DBG $ "Wrote to: " <> outputPath
   logMsg INF $ "Processed " <> url <> " successfully"
 

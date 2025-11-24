@@ -46,6 +46,12 @@ in
               description = "Minimum age in days for entries to be eligible for repetition";
               example = 3;
             };
+            minRunGapDays = lib.mkOption {
+              type = lib.types.int;
+              default = 1;
+              description = "Minimum gap in days between successive runs for this feed";
+              example = 2;
+            };
           };
         }
       );
