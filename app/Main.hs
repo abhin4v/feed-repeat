@@ -81,7 +81,8 @@ data FeedTask = FeedTask
     cacheSourceFeed :: Bool,
     repeatedEntryCount :: Int,
     minimumEntryAgeDays :: Int,
-    minRunGapDays :: Int
+    minRunGapDays :: Int,
+    maxEntryCountPerDomain :: Maybe Int
   }
   deriving (Show, Eq, Generic)
 
@@ -94,6 +95,7 @@ instance Aeson.FromJSON FeedTask where
       <*> v .: "repeatedEntryCount"
       <*> v .: "minimumEntryAgeDays"
       <*> v .:? "minRunGapDays" .!= 1
+      <*> v .:? "maxEntryCountPerDomain"
 
 data LogConfig = LogConfig
   { omitTimestamp :: Bool,
@@ -239,42 +241,45 @@ processSourceFeed task mOutputFeed sourceFeed = do
   let timestamp = T.pack $ iso8601Show now
       minAgeSeconds = fromIntegral (task.minimumEntryAgeDays * fromIntegral secondsPerDay)
   selectedEntries <-
-    liftIO (selectEntries task.repeatedEntryCount minAgeSeconds allEntries)
+    liftIO (selectEntries task.repeatedEntryCount minAgeSeconds task.maxEntryCountPerDomain allEntries)
       >>= traverse
         ( \e -> do
             entryId <- mkUuidUrn
             return e {Atom.entryId = entryId, Atom.entryUpdated = timestamp}
         )
-  logMsg DBG $ "Selected " <> show (length selectedEntries) <> " entries for repetition"
+  if null selectedEntries
+    then logMsg WRN $ "Selected no entries for repetition"
+    else do
+      logMsg DBG $ "Selected " <> show (length selectedEntries) <> " entries for repetition"
 
-  -- merge entries
-  let outputFeedEntries = maybe [] Atom.feedEntries mOutputFeed
-  let combinedEntries = selectedEntries <> outputFeedEntries
-  logMsg DBG $
-    "Combined entries: "
-      <> (show (length selectedEntries) <> " new + ")
-      <> (show (length outputFeedEntries) <> " existing = ")
-      <> show (length combinedEntries)
+      -- merge entries
+      let outputFeedEntries = maybe [] Atom.feedEntries mOutputFeed
+      let combinedEntries = selectedEntries <> outputFeedEntries
+      logMsg DBG $
+        "Combined entries: "
+          <> (show (length selectedEntries) <> " new + ")
+          <> (show (length outputFeedEntries) <> " existing = ")
+          <> show (length combinedEntries)
 
-  -- create new output feed
-  let resultFeed =
-        (fromMaybe sourceFeed mOutputFeed)
-          { Atom.feedUpdated = T.pack $ iso8601Show now,
-            Atom.feedEntries = combinedEntries
-          }
+      -- create new output feed
+      let resultFeed =
+            (fromMaybe sourceFeed mOutputFeed)
+              { Atom.feedUpdated = T.pack $ iso8601Show now,
+                Atom.feedEntries = combinedEntries
+              }
 
-  -- write new output feed
-  let URL url = task.sourceFeedUrl
-  content <-
-    fromMaybeOrThrow (FeedRenderError url) . Feed.textFeed $ Feed.AtomFeed resultFeed
-  env <- ask
-  let outputPath = env.options.outputDir </> task.outputFilename <> ".atom"
-  writeFile outputPath content
-  tryOrThrow IOError $
-    setFileMode outputPath $
-      foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
-  logMsg DBG $ "Wrote to: " <> outputPath
-  logMsg INF $ "Processed " <> url <> " successfully"
+      -- write new output feed
+      let URL url = task.sourceFeedUrl
+      content <-
+        fromMaybeOrThrow (FeedRenderError url) . Feed.textFeed $ Feed.AtomFeed resultFeed
+      env <- ask
+      let outputPath = env.options.outputDir </> task.outputFilename <> ".atom"
+      writeFile outputPath content
+      tryOrThrow IOError $
+        setFileMode outputPath $
+          foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
+      logMsg DBG $ "Wrote to: " <> outputPath
+      logMsg INF $ "Processed " <> url <> " successfully"
 
 fetchCacheFeed :: Bool -> URL -> App Atom.Feed
 fetchCacheFeed cache (URL url) = do

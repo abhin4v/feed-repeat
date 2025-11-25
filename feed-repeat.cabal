@@ -23,13 +23,14 @@ extra-source-files: README.md
 
 common common-config
   build-depends:
-    , base        >=4.18 && <5
+    , base                  >=4.18 && <5
     , bytestring
     , directory
     , either
     , filepath
     , hashable
-    , text        >=2.0
+    , text                  >=2.0
+    , unordered-containers
 
   default-language:   GHC2021
   default-extensions:
@@ -56,10 +57,11 @@ library
   hs-source-dirs:  src
   exposed-modules: Lib
   build-depends:
-    , feed
     , extra
+    , feed
     , http-client
     , mtl
+    , network-uri
     , random
     , time
     , uuid

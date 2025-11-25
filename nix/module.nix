@@ -52,6 +52,12 @@ in
               description = "Minimum gap in days between successive runs for this feed";
               example = 2;
             };
+            maxEntryCountPerDomain = lib.mkOption {
+              type = lib.types.nullOr lib.types.int;
+              default = null;
+              description = "Maximum number of entries to select from any single domain (optional)";
+              example = 1;
+            };
           };
         }
       );

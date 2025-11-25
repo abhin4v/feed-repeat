@@ -19,11 +19,16 @@
   minimumEntryAgeDays: 7
   # Minimum age in days for entries to be eligible for selection. (required, integer)
   # Entries newer than this are filtered out. Recommended: 7+ days to avoid repeating recent content.
-  
+
   minRunGapDays: 1
   # Minimum gap in days between consecutive runs for this feed. (optional, integer, default: 1)
   # Prevents the feed from being processed more frequently than specified.
   # Example: set to 7 to process this feed at most once per week, even if tool runs daily.
+
+  maxEntryCountPerDomain: 1
+  # Maximum number of entries to select from any single domain. (optional, integer, default: unlimited)
+  # When set, ensures diversity by limiting count of entries coming from one domains.
+  # Example: set to 1 to ensure at most one entry per domain is selected.
 
 - sourceFeedUrl: "https://abhinavsarkar.net/blogroll/feed.atom"
   outputFilename: "z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4"

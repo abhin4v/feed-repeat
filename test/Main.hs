@@ -1,7 +1,9 @@
 module Main where
 
-import Control.Monad (replicateM)
+import Control.Monad (replicateM, (>=>))
 import Control.Monad.Except (runExceptT)
+import Data.List (sort)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text qualified as T
 import Lib
 import Test.Hspec
@@ -118,24 +120,61 @@ main = hspec $ do
 
   describe "selectEntries" $ do
     it "returns empty list when entries list is empty" $ do
-      result <- selectEntries 0 (60 * 60 * 24 * 3) []
+      result <- selectEntries 0 (60 * 60 * 24 * 3) Nothing []
       length result `shouldBe` 0
 
     it "returns at most n entries" $ do
-      let entry1 = Atom.nullEntry "id1" (Atom.TextString "entry1") "Sun, 01 Jan 2025 10:30:45 GMT"
-          entry2 = Atom.nullEntry "id2" (Atom.TextString "entry2") "Sun, 01 Jan 2025 10:30:45 GMT"
-          entry3 = Atom.nullEntry "id3" (Atom.TextString "entry3") "Sun, 01 Jan 2025 10:30:45 GMT"
+      let entry1 =
+            (Atom.nullEntry "id1" (Atom.TextString "entry1") "Sun, 01 Jan 2025 10:30:45 GMT")
+              { Atom.entryLinks = [(Atom.nullLink "http://example.com/1")]
+              }
+          entry2 =
+            (Atom.nullEntry "id2" (Atom.TextString "entry2") "Sun, 01 Jan 2025 10:30:45 GMT")
+              { Atom.entryLinks = [(Atom.nullLink "http://example.com/2")]
+              }
+          entry3 =
+            (Atom.nullEntry "id3" (Atom.TextString "entry3") "Sun, 01 Jan 2025 10:30:45 GMT")
+              { Atom.entryLinks = [(Atom.nullLink "http://example.com/3")]
+              }
           entries = [entry1, entry2, entry3]
-      result <- selectEntries 1 (60 * 60 * 24 * 365) entries
+      result <- selectEntries 1 (60 * 60 * 24 * 365) Nothing entries
       length result `shouldSatisfy` (<= 1)
 
     it "filters out entries newer than minimum age" $ do
-      let oldEntry = Atom.nullEntry "id1" (Atom.TextString "old") "Sun, 01 Jan 2025 10:30:45 GMT"
-          newEntry = Atom.nullEntry "id2" (Atom.TextString "new") "Sat, 22 Nov 2025 10:30:45 GMT"
+      let oldEntry =
+            (Atom.nullEntry "id1" (Atom.TextString "old") "2020-01-01T10:30:45Z")
+              { Atom.entryLinks = [(Atom.nullLink "http://example.com/old")]
+              }
+          newEntry =
+            (Atom.nullEntry "id2" (Atom.TextString "new") "2025-11-25T10:30:45Z")
+              { Atom.entryLinks = [(Atom.nullLink "http://example.com/new")]
+              }
           entries = [oldEntry, newEntry]
-      result <- selectEntries 10 (60 * 60 * 24 * 3) entries
-      -- Should only select from old entries (if any are selected)
-      length result `shouldSatisfy` (<= 1)
+      result <- selectEntries 1 (60 * 60 * 24 * 3) Nothing entries
+      case result of
+        [entry] -> Atom.entryId entry `shouldBe` "id1"
+        _ -> expectationFailure $ "Expected exactly 1 entry, got " <> show (length result)
+
+    it "limits entries per domain when maxEntryCountPerDomain is set" $ do
+      let entry1 =
+            (Atom.nullEntry "id1" (Atom.TextString "entry1") "2020-01-01T10:30:45Z")
+              { Atom.entryLinks = [(Atom.nullLink "http://example.com/1")]
+              }
+          entry2 =
+            (Atom.nullEntry "id2" (Atom.TextString "entry2") "2020-01-02T10:30:45Z")
+              { Atom.entryLinks = [(Atom.nullLink "http://example.com/2")]
+              }
+          entry3 =
+            (Atom.nullEntry "id3" (Atom.TextString "entry3") "2020-01-03T10:30:45Z")
+              { Atom.entryLinks = [(Atom.nullLink "http://other.com/1")]
+              }
+          entries = [entry1, entry2, entry3]
+      result <- selectEntries 3 0 (Just 1) entries
+      length result `shouldBe` 2
+      let domains =
+            mapMaybe (listToMaybe . Atom.entryLinks >=> extractDomain . Atom.linkHref) result
+      length domains `shouldBe` 2
+      sort domains `shouldBe` ["example.com", "other.com"]
 
   describe "feedToAtom" $ do
     it "preserves feed ID when converting Atom" $ do
@@ -415,17 +454,21 @@ main = hspec $ do
             entries =
               zipWith
                 ( \idx y ->
-                    Atom.nullEntry
-                      (T.pack $ show y ++ "_" ++ show idx)
-                      (Atom.TextString $ T.pack $ "Entry from " ++ show y)
-                      (T.pack $ show y ++ "-01-01T00:00:00Z")
+                    let entryId = T.pack $ show y ++ "_" ++ show idx
+                     in ( Atom.nullEntry
+                            entryId
+                            (Atom.TextString $ T.pack $ "Entry from " ++ show y)
+                            (T.pack $ show y ++ "-01-01T00:00:00Z")
+                        )
+                          { Atom.entryLinks = [(Atom.nullLink $ "http://example.com/" <> entryId)]
+                          }
                 )
                 [1 ..]
                 validYears
         if null entries
           then discard
           else do
-            selections <- replicateM 10 (selectEntries 100 0 entries)
+            selections <- replicateM 10 (selectEntries 100 0 Nothing entries)
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 

@@ -6,6 +6,7 @@ import Control.Monad (forM, join, mplus, (>=>))
 import Control.Monad.Except (MonadError, liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Either.Combinators (mapLeft, maybeToRight)
+import Data.HashMap.Strict qualified as HM
 import Data.List (sortBy)
 import Data.List.Extra (nubOrdOn)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
@@ -16,6 +17,7 @@ import Data.Time.Format (defaultTimeLocale, parseTimeM, rfc822DateFormat)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.UUID.V4 qualified as UUID
 import Network.HTTP.Client qualified as HTTP
+import Network.URI qualified as URI
 import System.Random (randomRIO)
 import Text.Atom.Feed qualified as Atom
 import Text.Feed.Query qualified as Feed
@@ -118,8 +120,8 @@ mergeFeeds feed1 feed2 =
       uniqueEntries = nubOrdOn (Feed.getItemLink . Feed.AtomItem) sortedEntries
    in feed1 {Atom.feedEntries = uniqueEntries}
 
-selectEntries :: Int -> Integer -> [Atom.Entry] -> IO [Atom.Entry]
-selectEntries n minAgeSeconds entries = do
+selectEntries :: Int -> Integer -> Maybe Int -> [Atom.Entry] -> IO [Atom.Entry]
+selectEntries n minAgeSeconds maxEntryCountPerDomain entries = do
   now <- getCurrentTime
   select now $ filter (isOldEnough now) entries
   where
@@ -136,12 +138,29 @@ selectEntries n minAgeSeconds entries = do
         let age = diffUTCTime now updated
          in if age > 0 then exp (realToFrac age / (realToFrac secondsPerDay * 365)) else 1
 
-    -- A-Res algorithm
+    -- A-Res algorithm with per-domain limit
     select now es = do
       keys <- forM es $ \entry -> do
         r <- randomRIO (0, 1)
         return $ log r / computeWeight now entry
-      return $ take n $ map fst $ sortBy (comparing (Down . snd)) $ zip es keys
+      return
+        . limitEntries n (fromMaybe maxBound maxEntryCountPerDomain) mempty
+        . map fst
+        . sortBy (comparing (Down . snd))
+        $ zip es keys
+
+    limitEntries remaining maxAllowed sourceCounts =
+      reverse . snd . foldl' step ((remaining, sourceCounts), [])
+      where
+        step ((0, counts), acc) _ = ((0, counts), acc)
+        step ((rem, counts), acc) e =
+          case Feed.getItemLink (Feed.AtomItem e) >>= extractDomain of
+            Nothing -> ((rem, counts), acc) -- Skip entries without valid domain
+            Just domain
+              | let count = HM.lookupDefault 0 domain counts ->
+                  if count < maxAllowed
+                    then ((rem - 1, HM.insert domain (count + 1) counts), e : acc)
+                    else ((rem, counts), acc)
 
 mkUuidUrn :: (MonadIO m) => m T.Text
 mkUuidUrn = T.pack . ("urn:uuid:" <>) . show <$> liftIO UUID.nextRandom
@@ -158,3 +177,6 @@ tryOrThrow mkErr = liftIO . try >=> liftEither . mapLeft mkErr
 
 fromMaybeOrThrow :: (MonadError e m) => e -> Maybe a -> m a
 fromMaybeOrThrow err = liftEither . maybeToRight err
+
+extractDomain :: T.Text -> Maybe String
+extractDomain = fmap URI.uriRegName . (URI.parseURI . T.unpack >=> URI.uriAuthority)

@@ -93,6 +93,7 @@ The project includes a NixOS module (`nix/module.nix`) for easy integration into
         cacheSourceFeed = true;
         repeatedEntryCount = 3;
         minimumEntryAgeDays = 7;
+        maxEntryCountPerDomain = 1;
       }
     ];
     
@@ -272,16 +273,17 @@ Create a YAML file with a list of feed tasks:
 
 ```yaml
 - sourceFeedUrl: "https://example.com/feed.atom"
-  outputFilename: "unique-id-1"
-  cacheSourceFeed: true
-  repeatedEntryCount: 3
-  minimumEntryAgeDays: 7
+   outputFilename: "unique-id-1"
+   cacheSourceFeed: true
+   repeatedEntryCount: 3
+   minimumEntryAgeDays: 7
+   maxEntryCountPerDomain: 1
 
 - sourceFeedUrl: "https://another-site.com/rss.xml"
-  outputFilename: "unique-id-2"
-  cacheSourceFeed: false
-  repeatedEntryCount: 1
-  minimumEntryAgeDays: 14
+   outputFilename: "unique-id-2"
+   cacheSourceFeed: false
+   repeatedEntryCount: 1
+   minimumEntryAgeDays: 14
 ```
 
 ### Configuration Fields
@@ -292,6 +294,7 @@ Create a YAML file with a list of feed tasks:
 - `repeatedEntryCount` (integer, required): Number of entries to select for repetition per run.
 - `minimumEntryAgeDays` (integer, required): Minimum age in days for entries to be eligible for selection.
 - `minRunGapDays` (integer, optional, default: 1): Minimum gap in days between consecutive runs for this feed. Prevents the feed from being processed more frequently than specified.
+- `maxEntryCountPerDomain` (integer, optional): Maximum number of entries to select from any single domain. When set, ensures diversity by limiting count of entries coming from one domains. If not specified, no domain-based limit is applied.
 
 ## How It Works
 
@@ -301,11 +304,20 @@ Create a YAML file with a list of feed tasks:
 4. **Select**: Randomly selects `repeatedEntryCount` entries using weighted sampling.
    - Weight increases exponentially with entry age.
    - This biases selection toward older entries, making them more likely to be repeated.
+   - If `maxEntryCountPerDomain` is set, limits selection to at most that many entries per domain.
 5. **Update**: Assigns new UUIDs and timestamps to the selected entries.
 6. **Write**: Writes combined feed (new selections + existing output entries) to Atom file.
 7. **Cache**: Optionally caches the fetched feed for use if future fetches fail.
 
 Run frequency is limited to once per day per feed to avoid thrashing output feeds.
+
+### Domain-Based Diversity
+
+When `maxEntryCountPerDomain` is configured, the selection algorithm respects this limit. For example, with `maxEntryCountPerDomain: 1`:
+- If 5 entries qualify for selection but 3 come from `example.com`, only 1 from `example.com` will be selected.
+- Other domains' entries will be preferred to ensure diversity.
+
+This is useful for feeds that aggregate content from multiple sources (like link blogs), ensuring your output doesn't become dominated by entries from a single domain.
 
 ## Project Structure
 
