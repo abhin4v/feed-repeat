@@ -2,6 +2,24 @@
 
 A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetches entries from source feeds, filters them by age, and selects a random subset for inclusion in output feeds using weighted sampling where older entries have higher priority.
 
+## Table of Contents
+
+- [Features](#features)
+- [About & Prerequisites](#about--prerequisites)
+- [Building](#building)
+  - [Build with Cabal](#build-with-cabal)
+  - [Build with Nix](#build-with-nix)
+- [Usage](#usage)
+  - [NixOS Module](#using-as-a-nixos-module)
+  - [systemd Service](#using-as-a-systemd-service)
+  - [Docker](#using-as-a-docker-image)
+  - [Web Server](#serving-feeds-with-a-web-server)
+- [CLI Usage](#cli-usage)
+- [Configuration](#configuration)
+- [How It Works](#how-it-works)
+- [Project Structure](#project-structure)
+- [License](#license)
+
 ## Features
 
 - **Multi-feed support**: Process multiple source feeds with individual configurations.
@@ -74,7 +92,11 @@ build-static
 run
 ```
 
-## Using as a NixOS Module
+## Usage
+
+This project can be used as a Nix module or a Systemd service or a Docker container.
+
+### Using as a NixOS Module
 
 The project includes a NixOS module (`nix/module.nix`) for easy integration into NixOS systems. Import it in your configuration:
 
@@ -120,7 +142,7 @@ The module automatically:
 - Optionally configures Nginx to serve the output feeds.
 - Applies strict security hardening to the service.
 
-## Using as a systemd Service
+### Using as a systemd Service
 
 For non-NixOS systems, a systemd service file (`configs/feed-repeat.service`) is provided. To set it up:
 
@@ -171,7 +193,7 @@ For non-NixOS systems, a systemd service file (`configs/feed-repeat.service`) is
    sudo systemctl enable --now feed-repeat.timer
    ```
 
-## Using as a Docker Image
+### Using as a Docker Image
 
 A Docker image can be built with Nix:
 
@@ -195,7 +217,7 @@ The Docker image includes:
 - CA certificates for HTTPS feed fetching
 - Mount points for configuration, output, and cache directories
 
-### Scheduling Runs
+#### Scheduling Runs
 
 Since the container runs once and exits, you need to schedule it externally:
 
@@ -239,7 +261,7 @@ Since the container runs once and exits, you need to schedule it externally:
 
 4. **Docker Swarm**: Use native scheduled task features if using Docker Swarm.
 
-## Serving Feeds with a Web Server
+### Serving Feeds with a Web Server
 
 To serve the output feeds publicly, you can use any web server. Example configurations are provided for:
 
@@ -255,7 +277,7 @@ All examples include:
 
 Choose the configuration that matches your web server and customize the domain name and paths as needed.
 
-## Usage
+## CLI Usage
 
 ```bash
 feed-repeat --config config.yaml --output-dir ./output --cache-dir ./cache
@@ -311,7 +333,7 @@ Create a YAML file with a list of feed tasks:
 
 Run frequency is limited to once per day per feed to avoid thrashing output feeds.
 
-### Domain-Based Diversity
+### Domain-Based Limits
 
 When `maxEntryCountPerDomain` is configured, the selection algorithm respects this limit. For example, with `maxEntryCountPerDomain: 1`:
 - If 5 entries qualify for selection but 3 come from `example.com`, only 1 from `example.com` will be selected.
@@ -328,26 +350,6 @@ This is useful for feeds that aggregate content from multiple sources (like link
 - `config.yaml`: Example configuration file
 - `nix/`: Nix build files
 - `nix/module.nix`: NixOS module
-
-## Dependencies
-
-### Core
-- `feed`: RSS/Atom parsing and rendering
-- `http-client`, `http-conduit`: HTTP requests with timeouts
-- `time`: Timestamp handling
-- `uuid`: Entry ID generation
-- `random`: Random number generation
-- `mtl`: Monad transformers for error handling
-
-### Executable
-- `aeson`: JSON encoding/decoding
-- `yaml`: YAML configuration parsing
-- `http-types`: HTTP types
-- `optparse-applicative`: CLI argument parsing
-
-### Testing
-- `hspec`: Testing framework
-- `QuickCheck`: Property-based testing
 
 ## License
 
