@@ -112,7 +112,7 @@ The project includes a NixOS module (`nix/module.nix`) for easy integration into
       {
         sourceFeedUrl = "https://example.com/feed.atom";
         outputFilename = "example-feed";
-        cacheSourceFeed = true;
+        saveSourceFeedEntries = true;
         repeatedEntryCount = 3;
         minimumEntryAgeDays = 7;
         maxEntryCountPerDomain = 1;
@@ -296,14 +296,14 @@ Create a YAML file with a list of feed tasks:
 ```yaml
 - sourceFeedUrl: "https://example.com/feed.atom"
    outputFilename: "unique-id-1"
-   cacheSourceFeed: true
+   saveSourceFeedEntries: true
    repeatedEntryCount: 3
    minimumEntryAgeDays: 7
    maxEntryCountPerDomain: 1
 
 - sourceFeedUrl: "https://another-site.com/rss.xml"
    outputFilename: "unique-id-2"
-   cacheSourceFeed: false
+   saveSourceFeedEntries: false
    repeatedEntryCount: 1
    minimumEntryAgeDays: 14
 ```
@@ -312,7 +312,7 @@ Create a YAML file with a list of feed tasks:
 
 - `sourceFeedUrl` (string, required): URL of the source feed to repeat from.
 - `outputFilename` (string, required): Base filename for output Atom file (`.atom` extension added automatically).
-- `cacheSourceFeed` (boolean, required): Whether to cache the source feed for fallback on network errors.
+- `saveSourceFeedEntries` (boolean, required): Whether to save the source feed entries.
 - `repeatedEntryCount` (integer, required): Number of entries to select for repetition per run.
 - `minimumEntryAgeDays` (integer, required): Minimum age in days for entries to be eligible for selection.
 - `minRunGapDays` (integer, optional, default: 1): Minimum gap in days between consecutive runs for this feed. Prevents the feed from being processed more frequently than specified.

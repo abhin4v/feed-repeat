@@ -5,6 +5,7 @@
 
 module Main where
 
+import Control.Arrow ((>>>))
 import Control.Exception (IOException, displayException, try)
 import Control.Monad (forM, forM_, when)
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
@@ -13,7 +14,9 @@ import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Data.Aeson (withObject, (.!=), (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BSC
 import Data.Either (isRight)
+import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
 import Data.Hashable (Hashable, hash)
 import Data.List (nub, (\\))
@@ -21,16 +24,8 @@ import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Lazy qualified as TL
-import Data.Time
-  ( TimeZone,
-    UTCTime (..),
-    diffUTCTime,
-    getCurrentTime,
-    getCurrentTimeZone,
-    utcToLocalTime,
-  )
-import Data.Time.Calendar (fromGregorian)
-import Data.Time.Format (defaultTimeLocale, formatTime)
+import Data.Time (TimeZone, UTCTime (..))
+import Data.Time qualified as Time
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.Yaml qualified as Yaml
 import GHC.Generics (Generic)
@@ -78,7 +73,7 @@ newtype URL = URL String
 data FeedTask = FeedTask
   { sourceFeedUrl :: URL,
     outputFilename :: String,
-    cacheSourceFeed :: Bool,
+    saveSourceFeedEntries :: Bool,
     repeatedEntryCount :: Int,
     minimumEntryAgeDays :: Int,
     minRunGapDays :: Int,
@@ -91,7 +86,7 @@ instance Aeson.FromJSON FeedTask where
     FeedTask
       <$> v .: "sourceFeedUrl"
       <*> v .: "outputFilename"
-      <*> v .: "cacheSourceFeed"
+      <*> v .: "saveSourceFeedEntries"
       <*> v .: "repeatedEntryCount"
       <*> v .: "minimumEntryAgeDays"
       <*> v .:? "minRunGapDays" .!= 1
@@ -132,7 +127,7 @@ main = do
             <> Opt.header "feed-repeat"
         )
   runningUnderSystemd <- (== Just "1") <$> lookupEnv "RUNNING_UNDER_SYSTEMD"
-  tz <- getCurrentTimeZone
+  tz <- Time.getCurrentTimeZone
   let env = Env options $ LogConfig runningUnderSystemd tz
   createDirs env [options.outputDir, options.cacheDir]
   run env
@@ -209,11 +204,11 @@ runTask task = do
   let URL url = task.sourceFeedUrl
   logMsg DBG $ "Processing: " <> url
   logMsg DBG $
-    ("Task params: cacheSourceFeed=" <> show task.cacheSourceFeed)
+    ("Task params: saveSourceFeedEntries=" <> show task.saveSourceFeedEntries)
       <> (", repeatedEntryCount=" <> show task.repeatedEntryCount)
       <> (", minimumEntryAgeDays=" <> show task.minimumEntryAgeDays)
       <> (", minRunGapDays=" <> show task.minRunGapDays)
-  now <- liftIO getCurrentTime
+  now <- liftIO Time.getCurrentTime
   let outputPath = env.options.outputDir </> task.outputFilename <> ".atom"
 
   outputFeed <-
@@ -221,13 +216,13 @@ runTask task = do
       logMsg WRN $ "Failed to read output feed: " <> show err
       return Nothing
   let outputFeedUpdated = case outputFeed of
-        Nothing -> UTCTime (fromGregorian 2000 1 1) 0
+        Nothing -> UTCTime (Time.fromGregorian 2000 1 1) 0
         Just outputFeed -> fromMaybe now $ parseDate $ Atom.feedUpdated outputFeed
   let minRunGapSeconds = fromIntegral $ task.minRunGapDays * secondsPerDay - timerToleranceSeconds
-  if diffUTCTime now outputFeedUpdated < minRunGapSeconds
+  if Time.diffUTCTime now outputFeedUpdated < minRunGapSeconds
     then logMsg INF $ "Skipping run for URL: " <> url
     else do
-      fetchCacheFeed task.cacheSourceFeed task.sourceFeedUrl
+      fetchCacheFeed task.saveSourceFeedEntries task.sourceFeedUrl outputFeedUpdated
         >>= processSourceFeed task outputFeed
 
 processSourceFeed :: FeedTask -> Maybe Atom.Feed -> Atom.Feed -> App ()
@@ -241,7 +236,7 @@ processSourceFeed task mOutputFeed sourceFeed = do
   logMsg DBG $ "Merged feed has " <> show (length allEntries) <> " entries"
 
   -- select entries
-  now <- liftIO getCurrentTime
+  now <- liftIO Time.getCurrentTime
   let timestamp = T.pack $ iso8601Show now
       minAgeSeconds = fromIntegral $ task.minimumEntryAgeDays * secondsPerDay
   selectedEntries <-
@@ -285,43 +280,42 @@ processSourceFeed task mOutputFeed sourceFeed = do
       logMsg DBG $ "Wrote to: " <> outputPath
       logMsg INF $ "Processed " <> url <> " successfully"
 
-fetchCacheFeed :: Bool -> URL -> App Atom.Feed
-fetchCacheFeed cache (URL url) = do
+fetchCacheFeed :: Bool -> URL -> UTCTime -> App Atom.Feed
+fetchCacheFeed saveSourceFeedEntries (URL url) feedUpdated = do
   env <- ask
-  let filePath = env.options.cacheDir </> show (hash url) <> ".atom"
+  let cacheFilePath = env.options.cacheDir </> show (hash url) <> ".atom"
   freshOrCachedFeed <-
-    (Right <$> fetchFeed url) `catchError` \err ->
-      if cache
-        then do
+    (Right <$> fetchFeed url feedUpdated) `catchError` \err -> do
+      case err of
+        FeedNotModifiedError -> logMsg DBG $ "Feed not modified, using cached"
+        _ ->
           logMsg WRN $
             "Unable to fetch fresh feed for URL: " <> url <> ", using cached: " <> show err
-          Left <$> parseAtomFile filePath
-        else throwError err
+      Left <$> parseAtomFile cacheFilePath
   mergedFeed <-
-    if cache
+    if saveSourceFeedEntries
       then case freshOrCachedFeed of
         Right freshFeed ->
-          (mergeFeeds freshFeed <$> parseAtomFile filePath) `catchError` \_ -> return freshFeed
+          (mergeFeeds freshFeed <$> parseAtomFile cacheFilePath) `catchError` \_ -> return freshFeed
         Left cachedFeed -> return cachedFeed
-      else return $ rightOrLeft freshOrCachedFeed
+      else return $ fromEither freshOrCachedFeed
 
-  when (cache && isRight freshOrCachedFeed) $
+  when (isRight freshOrCachedFeed) $
     case Feed.textFeed (Feed.AtomFeed mergedFeed) of
       Nothing -> logMsg WRN $ "Failed to export feed for URL: " <> url
       Just txt ->
-        (writeFile filePath txt >> logMsg DBG ("Cached to: " <> filePath))
+        (writeFile cacheFilePath txt >> logMsg DBG ("Cached to: " <> cacheFilePath))
           `catchError` (logMsg WRN . ("Failed to write cache file: " <>) . show)
 
   return mergedFeed
-  where
-    rightOrLeft = \case Right a -> a; Left a -> a
 
-fetchFeed :: String -> App Atom.Feed
-fetchFeed url = do
+fetchFeed :: String -> UTCTime -> App Atom.Feed
+fetchFeed url modTime = do
   atomFeed <-
     tryOrThrow HTTPError (HTTP.parseRequest url)
-      >>= tryOrThrow HTTPError . HTTP.httpLBS . addHeaders
-      >>= fromMaybeOrThrow (FeedParseError url) . Feed.parseFeedSource . HTTP.getResponseBody
+      >>= (addHeaders >>> HTTP.httpLBS >>> tryOrThrow HTTPError)
+      >>= (checkForStatusNotModified >>> fromMaybeOrThrow FeedNotModifiedError)
+      >>= (Feed.parseFeedSource >>> fromMaybeOrThrow (FeedParseError url))
       >>= feedToAtom
   logMsg DBG $
     "Fetched feed with " <> show (length $ Atom.feedEntries atomFeed) <> " entries"
@@ -331,8 +325,19 @@ fetchFeed url = do
       request
         { HTTP.responseTimeout = HTTP.responseTimeoutMicro requestTimeoutMicros,
           HTTP.requestHeaders =
-            HTTP.requestHeaders request <> [(HTTP.hUserAgent, "feed-repeat")]
+            HTTP.requestHeaders request
+              <> [ (HTTP.hUserAgent, "feed-repeat"),
+                   ( HTTP.hIfModifiedSince,
+                     BSC.pack
+                       . Time.formatTime Time.defaultTimeLocale Time.rfc822DateFormat
+                       $ Time.utcToZonedTime (read "GMT") modTime
+                   )
+                 ]
         }
+
+    checkForStatusNotModified resp
+      | HTTP.responseStatus resp == HTTP.status304 = Nothing
+      | otherwise = Just $ HTTP.responseBody resp
 
 parseAtomFile :: FilePath -> App Atom.Feed
 parseAtomFile filePath = do
@@ -362,9 +367,9 @@ logMsg' logConfig level msg = do
       <$> if logConfig.omitTimestamp
         then return ""
         else do
-          now <- liftIO getCurrentTime
-          let localTime = utcToLocalTime logConfig.timeZone now
-          let timestamp = formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" localTime
+          now <- liftIO Time.getCurrentTime
+          let localTime = Time.utcToLocalTime logConfig.timeZone now
+          let timestamp = Time.formatTime Time.defaultTimeLocale "%Y-%m-%d %H:%M:%S" localTime
           return $ timestamp <> " "
   liftIO $ putStrLn logLine
 

@@ -29,7 +29,7 @@ in
               description = "Output filename prefix (without .atom extension)";
               example = "example-feed";
             };
-            cacheSourceFeed = lib.mkOption {
+            saveSourceFeedEntries = lib.mkOption {
               type = lib.types.bool;
               default = false;
               description = "Whether to cache the source feed locally";
@@ -122,7 +122,7 @@ in
       home = cfg.outputDir;
     };
     users.users.${config.services.nginx.user} = lib.mkIf cfg.enableNginx {
-      extraGroups = [serviceName];
+      extraGroups = [ serviceName ];
     };
     users.groups.${serviceName} = { };
 

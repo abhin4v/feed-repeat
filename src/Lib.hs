@@ -35,6 +35,7 @@ data AppError
   | FeedRenderError FilePath
   | InvalidFormatError String FilePath
   | InvalidFeedUpdatedError
+  | FeedNotModifiedError
   | HTTPError HTTP.HttpException
 
 instance Show AppError where
@@ -44,6 +45,7 @@ instance Show AppError where
     FeedRenderError filePath -> "Failed to render: " <> filePath
     InvalidFormatError format filePath -> "File is not in " <> format <> " format: " <> filePath
     InvalidFeedUpdatedError -> "Feed updated date absent"
+    FeedNotModifiedError -> "Feed not modified"
     HTTPError err -> "HTTP error: " <> displayException err
 
 feedToAtom :: (MonadIO m, MonadError AppError m) => Feed.Feed -> m Atom.Feed

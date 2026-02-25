@@ -72,6 +72,7 @@ executable feed-repeat
   hs-source-dirs: app
   build-depends:
     , aeson
+    , extra
     , feed
     , feed-repeat
     , http-client

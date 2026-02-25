@@ -8,9 +8,10 @@
   # Base filename for the output Atom feed file. The .atom extension is added automatically. (required, string)
   # Use unique identifiers or descriptive names to avoid filename collisions.
 
-  cacheSourceFeed: false
-  # Whether to cache the source feed as a fallback if fetching fails. (required, boolean)
-  # Set to true for critical feeds; set to false if you prefer no output if the source is unavailable.
+  saveSourceFeedEntries: false
+  # Whether to save the source feed entries. (required, boolean)
+  # Set to true for feeds that keep removing entries over time.
+  # Set to false for feeds that always return all their entries.
 
   repeatedEntryCount: 3
   # Number of entries to randomly select for repetition on each run. (required, integer)
@@ -32,12 +33,12 @@
 
 - sourceFeedUrl: "https://abhinavsarkar.net/blogroll/feed.atom"
   outputFilename: "z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4"
-  cacheSourceFeed: true
+  saveSourceFeedEntries: true
   repeatedEntryCount: 1
   minimumEntryAgeDays: 14
 
 - sourceFeedUrl: "https://akils.mataroa.blog/rss/"
   outputFilename: "12347w6v5u4t3s2r1q0p9o8n7m6l123"
-  cacheSourceFeed: true
+  saveSourceFeedEntries: true
   repeatedEntryCount: 1
   minimumEntryAgeDays: 14
