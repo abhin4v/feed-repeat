@@ -46,4 +46,17 @@
           gitIgnore path type && !builtins.elem (baseNameOf path) files
           && !lib.any (d: lib.hasPrefix d (relToPath path)) paths;
     };
+    
+  compressExes = src: pkgs.stdenv.mkDerivation {
+    name = "${src.name}-compressed";
+    inherit src;
+    nativeBuildInputs = [ pkgs.upx ];
+    installPhase = ''
+      mkdir -p $out/bin
+      cp $src/bin/* $out/bin/
+      chmod +w $out/bin/*
+      upx -q --lzma -1 $out/bin/*
+    '';
+  };
+
 }

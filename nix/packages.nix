@@ -35,7 +35,7 @@ let
   ncurses = pkgs.ncurses.override { enableStatic = true; };
   zlib = pkgs.zlib.static;
   numactl = pkgs.numactl.overrideAttrs (oldAttrs: {
-    configureFlags = (oldAttrs.configureFlags or []) ++ [
+    configureFlags = (oldAttrs.configureFlags or [ ]) ++ [
       "--enable-static"
       "--disable-shared"
     ];
@@ -73,7 +73,13 @@ let
         hlib.enableDeadCodeElimination
         (hlib.appendConfigureFlags [
           "--ghc-option=-fPIC"
+          "--ghc-option=-split-sections"
+          "--ghc-option=-optl-fuse-ld=gold"
+          "--ld-option=-fuse-ld=gold"
+          "--ld-option=-Wl,--gc-sections,--build-id,--icf=all"
+          "--with-ld=ld.gold"
           "--ghc-option=-optl=-static"
+          "--ghc-option=-optl=-pthread"
           "--extra-lib-dirs=${gmp6}/lib"
           "--extra-lib-dirs=${libffi}/lib"
           "--extra-lib-dirs=${ncurses}/lib"
@@ -164,7 +170,7 @@ in
     confPkg
     ; # TODO: remove
 
-  bin = ourHaskell.feed-repeat;
+  bin = (if static then util.compressExes else (x: x)) ourHaskell.feed-repeat;
 
   shell = pkgs.buildEnv {
     name = "feed-repeat-env";
