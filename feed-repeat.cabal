@@ -65,6 +65,7 @@ library
     , mtl
     , network-uri
     , random
+    , scientific   ^>=0.3.8.0
     , time
     , uuid
 

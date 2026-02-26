@@ -35,34 +35,34 @@ in
               description = "Whether to cache the source feed locally";
             };
             repeatedEntryCount = lib.mkOption {
-              type = lib.types.int;
+              type = lib.types.ints.unsigned;
               default = 3;
               description = "Number of entries to repeat in each run";
               example = 5;
             };
             minimumEntryAgeDays = lib.mkOption {
-              type = lib.types.int;
+              type = lib.types.ints.unsigned;
               default = 7;
               description = "Minimum age in days for entries to be eligible for repetition";
               example = 3;
             };
             minRunGapDays = lib.mkOption {
-              type = lib.types.int;
+              type = lib.types.ints.unsigned;
               default = 1;
               description = "Minimum gap in days between successive runs for this feed";
               example = 2;
             };
             maxEntryCountPerDomain = lib.mkOption {
-              type = lib.types.nullOr lib.types.int;
+              type = lib.types.nullOr lib.types.ints.positive;
               default = null;
               description = "Maximum number of entries to select from any single domain (optional)";
               example = 1;
             };
             selectionAlpha = lib.mkOption {
-              type = lib.types.float;
+              type = lib.types.addCheck lib.types.float (x: x >= 0);
               default = 1.0;
               description = "Controls how strongly the weighted selection favors older entries. Higher values make older entries much more likely to be selected. Set to 0 for uniform random selection.";
-              example = 0.5;
+              example = 1.5;
             };
           };
         }

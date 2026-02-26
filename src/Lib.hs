@@ -1,7 +1,23 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 
-module Lib where
+module Lib
+  ( URL (..),
+    Positive (),
+    newPositive,
+    FeedTask (..),
+    AppError (..),
+    feedToAtom,
+    mergeFeeds,
+    selectEntries,
+    mkUuidUrn,
+    parseDate,
+    tryOrThrow,
+    fromMaybeOrThrow,
+    extractDomain,
+  )
+where
 
 import Control.Applicative (asum, (<|>))
 import Control.Arrow ((>>>))
@@ -19,12 +35,14 @@ import Data.List (sortBy)
 import Data.List.Extra (nubOrdOn)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Ord (Down (..), comparing)
+import Data.Scientific qualified as Scientific
 import Data.Text qualified as T
 import Data.Time (UTCTime (..), diffUTCTime, getCurrentTime, nominalDay)
 import Data.Time.Format (defaultTimeLocale, parseTimeM, rfc822DateFormat)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.UUID.V4 qualified as UUID
 import GHC.Generics (Generic)
+import GHC.Records (HasField (..))
 import Network.HTTP.Client qualified as HTTP
 import Network.URI qualified as URI
 import System.Random (randomRIO)
@@ -37,15 +55,43 @@ newtype URL = URL String
   deriving stock (Show, Eq, Generic)
   deriving anyclass (Aeson.FromJSON, Hashable)
 
+newtype Positive a = Positive {unPositive :: a}
+  deriving stock (Eq)
+
+instance HasField "toNum" (Positive a) a where
+  getField = unPositive
+
+instance (Show a) => Show (Positive a) where
+  show (Positive a) = show a
+
+newPositive :: (Ord a, Num a) => a -> Maybe (Positive a)
+newPositive num = if num >= 0 then Just $ Positive num else Nothing
+
+instance Aeson.FromJSON (Positive Int) where
+  parseJSON = Aeson.withScientific "number" $ \num ->
+    if num >= 0
+      then case Scientific.toBoundedInteger num of
+        Just n -> return $ Positive n
+        Nothing -> fail $ "Expected positive int, but found: " <> show num
+      else fail $ "Expected positive int, but found: " <> show num
+
+instance Aeson.FromJSON (Positive Double) where
+  parseJSON = Aeson.withScientific "number" $ \num ->
+    if num >= 0
+      then case Scientific.toBoundedRealFloat num of
+        Right n -> return $ Positive n
+        Left _ -> fail $ "Expected positive double, but found: " <> show num
+      else fail $ "Expected positive double, but found: " <> show num
+
 data FeedTask = FeedTask
   { sourceFeedUrl :: URL,
     outputFilename :: String,
     saveSourceFeedEntries :: Bool,
-    repeatedEntryCount :: Int,
-    minimumEntryAgeDays :: Int,
-    minRunGapDays :: Int,
-    maxEntryCountPerDomain :: Maybe Int,
-    selectionAlpha :: Double
+    repeatedEntryCount :: Positive Int,
+    minimumEntryAgeDays :: Positive Int,
+    minRunGapDays :: Positive Int,
+    maxEntryCountPerDomain :: Maybe (Positive Int),
+    selectionAlpha :: Positive Double
   }
   deriving (Show, Eq, Generic)
 
@@ -57,9 +103,9 @@ instance Aeson.FromJSON FeedTask where
       <*> v .: "saveSourceFeedEntries"
       <*> v .: "repeatedEntryCount"
       <*> v .: "minimumEntryAgeDays"
-      <*> v .:? "minRunGapDays" .!= 1
+      <*> v .:? "minRunGapDays" .!= Positive 1
       <*> v .:? "maxEntryCountPerDomain"
-      <*> v .:? "selectionAlpha" .!= 1
+      <*> v .:? "selectionAlpha" .!= Positive 1
 
 data AppError
   = IOError IOException
@@ -161,7 +207,7 @@ selectEntries task entries = do
   now <- getCurrentTime
   select now $ filter (isOldEnough now) entries
   where
-    minAgeSeconds = fromIntegral task.minimumEntryAgeDays * nominalDay
+    minAgeSeconds = fromIntegral task.minimumEntryAgeDays.toNum * nominalDay
 
     isOldEnough currentTime entry =
       case parseDate $ Atom.entryUpdated entry of
@@ -174,7 +220,7 @@ selectEntries task entries = do
       Just updated
         | let age = diffUTCTime now updated,
           age > 0 ->
-            exp (task.selectionAlpha * realToFrac (age / (nominalDay * 365)))
+            exp (task.selectionAlpha.toNum * realToFrac (age / (nominalDay * 365)))
       _ -> 1
 
     -- A-Res algorithm with per-domain limit
@@ -185,11 +231,11 @@ selectEntries task entries = do
       zip es keys
         & sortBy (comparing (Down . snd))
         & map fst
-        & limitEntries (fromMaybe maxBound task.maxEntryCountPerDomain) mempty
+        & limitEntries (fromMaybe maxBound (unPositive <$> task.maxEntryCountPerDomain)) mempty
         & return
 
     limitEntries maxAllowed sourceCounts =
-      foldl' step ((task.repeatedEntryCount, sourceCounts), [])
+      foldl' step ((task.repeatedEntryCount.toNum, sourceCounts), [])
         >>> snd
         >>> reverse
       where

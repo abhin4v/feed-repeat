@@ -3,11 +3,11 @@ module Main where
 import Control.Monad (replicateM, (>=>))
 import Control.Monad.Except (runExceptT)
 import Data.List (sort)
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text qualified as T
 import Lib
 import Test.Hspec
-import Test.QuickCheck
+import Test.QuickCheck hiding (Positive)
 import Text.Atom.Feed qualified as Atom
 import Text.Feed.Types qualified as Feed
 import Text.RSS.Syntax qualified as RSS
@@ -18,12 +18,15 @@ mkTask count minAgeDays maxPerDomain =
     { sourceFeedUrl = URL "http://example.com/feed",
       outputFilename = "test-output.xml",
       saveSourceFeedEntries = False,
-      repeatedEntryCount = count,
-      minimumEntryAgeDays = minAgeDays,
-      minRunGapDays = 1,
-      maxEntryCountPerDomain = maxPerDomain,
-      selectionAlpha = 1
+      repeatedEntryCount = newPositive' count,
+      minimumEntryAgeDays = newPositive' minAgeDays,
+      minRunGapDays = newPositive' 1,
+      maxEntryCountPerDomain = newPositive' <$> maxPerDomain,
+      selectionAlpha = newPositive' 1
     }
+
+newPositive' :: (Ord a, Num a) => a -> Positive a
+newPositive' = fromMaybe (error "Impossible") . newPositive
 
 main :: IO ()
 main = hspec $ do
@@ -608,7 +611,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ selectEntries (task {selectionAlpha = 0}) entries
+            selections <- replicateM 10 $ selectEntries (task {selectionAlpha = newPositive' 0}) entries
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 

@@ -184,7 +184,7 @@ runTask task = do
   let outputFeedUpdated = case outputFeed of
         Nothing -> UTCTime (Time.fromGregorian 2000 1 1) 0
         Just outputFeed -> fromMaybe now $ parseDate $ Atom.feedUpdated outputFeed
-  let minRunGapSeconds = fromIntegral task.minRunGapDays * Time.nominalDay - timerTolerance
+  let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
   if Time.diffUTCTime now outputFeedUpdated < minRunGapSeconds
     then logMsg INF $ "Skipping run for URL: " <> url
     else do

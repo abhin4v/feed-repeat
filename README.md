@@ -310,16 +310,7 @@ Create a YAML file with a list of feed tasks:
    minimumEntryAgeDays: 14
 ```
 
-### Configuration Fields
-
-- `sourceFeedUrl` (string, required): URL of the source feed to repeat from.
-- `outputFilename` (string, required): Base filename for output Atom file (`.atom` extension added automatically).
-- `saveSourceFeedEntries` (boolean, required): Whether to save the source feed entries.
-- `repeatedEntryCount` (integer, required): Number of entries to select for repetition per run.
-- `minimumEntryAgeDays` (integer, required): Minimum age in days for entries to be eligible for selection.
-- `minRunGapDays` (integer, optional, default: 1): Minimum gap in days between consecutive runs for this feed. Prevents the feed from being processed more frequently than specified.
-- `maxEntryCountPerDomain` (integer, optional): Maximum number of entries to select from any single domain. When set, ensures diversity by limiting count of entries coming from one domains. If not specified, no domain-based limit is applied.
-- `selectionAlpha` (number, optional, default: 1): # Controls how strongly the weighted selection favors older entries. (optional, number, default: 1). Higher values make older entries much more likely to be selected. Set to 0 for uniform random selection regardless of age.
+See `config.yaml` for all available parameters and their meanings.
 
 ## License
 

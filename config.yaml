@@ -14,25 +14,25 @@
   # Set to false for feeds that always return all their entries.
 
   repeatedEntryCount: 3
-  # Number of entries to randomly select for repetition on each run. (required, integer)
+  # Number of entries to randomly select for repetition on each run. (required, integer >= 0)
   # Recommended range: 1-5. Higher values will repeat more entries.
 
   minimumEntryAgeDays: 7
-  # Minimum age in days for entries to be eligible for selection. (required, integer)
+  # Minimum age in days for entries to be eligible for selection. (required, integer >= 0)
   # Entries newer than this are filtered out. Recommended: 7+ days to avoid repeating recent content.
 
   minRunGapDays: 1
-  # Minimum gap in days between consecutive runs for this feed. (optional, integer, default: 1)
+  # Minimum gap in days between consecutive runs for this feed. (optional, integer >= 0, default: 1)
   # Prevents the feed from being processed more frequently than specified.
   # Example: set to 7 to process this feed at most once per week, even if tool runs daily.
 
   maxEntryCountPerDomain: 1
-  # Maximum number of entries to select from any single domain. (optional, integer, default: unlimited)
+  # Maximum number of entries to select from any single domain. (optional, integer >= 0, default: unlimited)
   # When set, ensures diversity by limiting count of entries coming from one domains.
   # Example: set to 1 to ensure at most one entry per domain is selected.
 
   selectionAlpha: 0.5
-  # Controls how strongly the weighted selection favors older entries. (optional, number, default: 1)
+  # Controls how strongly the weighted selection favors older entries. (optional, double >= 0, default: 1)
   # Higher values make older entries much more likely to be selected.
   # Set to 0 for uniform random selection regardless of age.
 
