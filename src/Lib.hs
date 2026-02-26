@@ -14,7 +14,7 @@ import Data.List.Extra (nubOrdOn)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Ord (Down (..), comparing)
 import Data.Text qualified as T
-import Data.Time (UTCTime (..), diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime (..), diffUTCTime, getCurrentTime, nominalDay)
 import Data.Time.Format (defaultTimeLocale, parseTimeM, rfc822DateFormat)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.UUID.V4 qualified as UUID
@@ -25,9 +25,6 @@ import Text.Atom.Feed qualified as Atom
 import Text.Feed.Query qualified as Feed
 import Text.Feed.Types qualified as Feed
 import Prelude hiding (writeFile)
-
-secondsPerDay :: Int
-secondsPerDay = 86400
 
 data AppError
   = IOError IOException
@@ -124,23 +121,22 @@ mergeFeeds feed1 feed2 =
       uniqueEntries = nubOrdOn (Feed.getItemLink . Feed.AtomItem) sortedEntries
    in feed1 {Atom.feedEntries = uniqueEntries}
 
-selectEntries :: Int -> Integer -> Maybe Int -> [Atom.Entry] -> IO [Atom.Entry]
-selectEntries n minAgeSeconds maxEntryCountPerDomain entries = do
+selectEntries :: Int -> NominalDiffTime -> Maybe Int -> [Atom.Entry] -> IO [Atom.Entry]
+selectEntries entryCount minAgeSeconds maxEntryCountPerDomain entries = do
   now <- getCurrentTime
   select now $ filter (isOldEnough now) entries
   where
     isOldEnough currentTime entry =
       case parseDate $ Atom.entryUpdated entry of
         Nothing -> True
-        Just entryTime ->
-          diffUTCTime currentTime entryTime >= fromInteger minAgeSeconds
+        Just entryTime -> diffUTCTime currentTime entryTime >= minAgeSeconds
 
     computeWeight :: UTCTime -> Atom.Entry -> Double
     computeWeight now entry = case parseDate $ Atom.entryUpdated entry of
       Nothing -> 1
       Just updated ->
         let age = diffUTCTime now updated
-         in if age > 0 then exp (realToFrac age / (realToFrac secondsPerDay * 365)) else 1
+         in if age > 0 then exp (realToFrac $ age / (nominalDay * 365)) else 1
 
     -- A-Res algorithm with per-domain limit
     select now es = do
@@ -150,11 +146,11 @@ selectEntries n minAgeSeconds maxEntryCountPerDomain entries = do
       zip es keys
         & sortBy (comparing (Down . snd))
         & map fst
-        & limitEntries n (fromMaybe maxBound maxEntryCountPerDomain) mempty
+        & limitEntries (fromMaybe maxBound maxEntryCountPerDomain) mempty
         & return
 
-    limitEntries remaining maxAllowed sourceCounts =
-      foldl' step ((remaining, sourceCounts), [])
+    limitEntries maxAllowed sourceCounts =
+      foldl' step ((entryCount, sourceCounts), [])
         >>> snd
         >>> reverse
       where

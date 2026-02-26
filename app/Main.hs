@@ -24,7 +24,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Lazy qualified as TL
-import Data.Time (TimeZone, UTCTime (..))
+import Data.Time (NominalDiffTime, TimeZone, UTCTime (..))
 import Data.Time qualified as Time
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.Yaml qualified as Yaml
@@ -113,8 +113,8 @@ type App a = ExceptT AppError (ReaderT Env IO) a
 requestTimeoutMicros :: Int
 requestTimeoutMicros = 30_000_000 -- 30 sec
 
-timerToleranceSeconds :: Int
-timerToleranceSeconds = 5 * 60 -- 5 minutes tolerance for systemd timer imprecision
+timerTolerance :: NominalDiffTime
+timerTolerance = 5 * 60 -- 5 minutes tolerance for systemd timer imprecision
 
 main :: IO ()
 main = do
@@ -218,7 +218,7 @@ runTask task = do
   let outputFeedUpdated = case outputFeed of
         Nothing -> UTCTime (Time.fromGregorian 2000 1 1) 0
         Just outputFeed -> fromMaybe now $ parseDate $ Atom.feedUpdated outputFeed
-  let minRunGapSeconds = fromIntegral $ task.minRunGapDays * secondsPerDay - timerToleranceSeconds
+  let minRunGapSeconds = fromIntegral task.minRunGapDays * Time.nominalDay - timerTolerance
   if Time.diffUTCTime now outputFeedUpdated < minRunGapSeconds
     then logMsg INF $ "Skipping run for URL: " <> url
     else do
@@ -238,7 +238,7 @@ processSourceFeed task mOutputFeed sourceFeed = do
   -- select entries
   now <- liftIO Time.getCurrentTime
   let timestamp = T.pack $ iso8601Show now
-      minAgeSeconds = fromIntegral $ task.minimumEntryAgeDays * secondsPerDay
+      minAgeSeconds = fromIntegral task.minimumEntryAgeDays * Time.nominalDay
   selectedEntries <-
     liftIO (selectEntries task.repeatedEntryCount minAgeSeconds task.maxEntryCountPerDomain allEntries)
       >>= traverse
