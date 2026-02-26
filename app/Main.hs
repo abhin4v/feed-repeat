@@ -2,7 +2,7 @@ module Main where
 
 import Control.Arrow ((>>>))
 import Control.Exception (IOException, displayException, try)
-import Control.Monad (forM, forM_, when, (>=>))
+import Control.Monad (forM_, when, (>=>))
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
@@ -149,26 +149,13 @@ validateTasks env tasks = do
       logIO env ERR "Duplicate output filenames found:"
       forM_ (nub duplicates) (logIO env ERR . ("  " <>))
       return Nothing
-    else do
-      -- Check for valid source feed URLs
-      validationResults <- forM tasks $ \task -> do
-        let URL url = task.sourceFeedUrl
-        res <- try @HTTP.HttpException $ HTTP.parseRequest url
-        return (task, isRight res)
-      let invalidTasks = map fst $ filter (not . snd) validationResults
-      if not (null invalidTasks)
-        then do
-          logIO env ERR "Invalid source feed URLs in tasks:"
-          forM_ invalidTasks $ \task ->
-            let URL url = task.sourceFeedUrl in logIO env ERR $ "  " <> url
-          return Nothing
-        else return $ Just tasks
+    else return $ Just tasks
 
 runTask :: FeedTask -> App ()
 runTask task = do
   env <- ask
-  let URL url = task.sourceFeedUrl
-  logMsg DBG $ "Processing: " <> url
+  let url = task.sourceFeedUrl
+  logMsg DBG $ "Processing: " <> show url
   logMsg DBG $
     ("Task params: saveSourceFeedEntries=" <> show task.saveSourceFeedEntries)
       <> (", repeatedEntryCount=" <> show task.repeatedEntryCount)
@@ -181,12 +168,13 @@ runTask task = do
     (Just <$> parseAtomFile outputPath) `catchError` \err -> do
       logMsg WRN $ "Failed to read output feed: " <> show err
       return Nothing
-  let outputFeedUpdated = case outputFeed of
-        Nothing -> UTCTime (Time.fromGregorian 2000 1 1) 0
-        Just outputFeed -> fromMaybe now $ parseDate $ Atom.feedUpdated outputFeed
+  let ancientTime = UTCTime (Time.fromGregorian 2000 1 1) 0
+      outputFeedUpdated = case outputFeed of
+        Nothing -> ancientTime
+        Just outputFeed -> fromMaybe ancientTime $ parseDate $ Atom.feedUpdated outputFeed
   let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
   if Time.diffUTCTime now outputFeedUpdated < minRunGapSeconds
-    then logMsg INF $ "Skipping run for URL: " <> url
+    then logMsg INF $ "Skipping run for URL: " <> show url
     else
       fetchCacheFeed task.saveSourceFeedEntries task.sourceFeedUrl outputFeedUpdated
         >>= processSourceFeed task outputFeed
@@ -233,9 +221,9 @@ processSourceFeed task mOutputFeed sourceFeed = do
               }
 
       -- write new output feed
-      let URL url = task.sourceFeedUrl
+      let url = task.sourceFeedUrl
       content <-
-        fromMaybeOrThrow (FeedRenderError url) . Feed.textFeed $ Feed.AtomFeed resultFeed
+        fromMaybeOrThrow (FeedRenderError url.toString) . Feed.textFeed $ Feed.AtomFeed resultFeed
       env <- ask
       let outputPath = env.options.outputDir </> task.outputFilename <> ".atom"
       writeFile outputPath content
@@ -243,19 +231,19 @@ processSourceFeed task mOutputFeed sourceFeed = do
         setFileMode outputPath $
           foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
       logMsg DBG $ "Wrote to: " <> outputPath
-      logMsg INF $ "Processed " <> url <> " successfully"
+      logMsg INF $ "Processed " <> show url <> " successfully"
 
 fetchCacheFeed :: Bool -> URL -> UTCTime -> App Atom.Feed
-fetchCacheFeed saveSourceFeedEntries (URL url) feedUpdated = do
+fetchCacheFeed saveSourceFeedEntries url feedUpdated = do
   env <- ask
   let cacheFilePath = env.options.cacheDir </> show (hash url) <> ".atom"
   freshOrCachedFeed <-
     (Right <$> fetchFeed url feedUpdated) `catchError` \err -> do
       case err of
-        FeedNotModifiedError -> logMsg DBG $ "Feed not modified: " <> url <> ", using cached"
+        FeedNotModifiedError -> logMsg DBG $ "Feed not modified: " <> show url <> ", using cached"
         _ ->
           logMsg WRN $
-            "Unable to fetch fresh feed: " <> url <> ", using cached: " <> show err
+            "Unable to fetch fresh feed: " <> show url <> ", using cached: " <> show err
       Left <$> parseAtomFile cacheFilePath
   mergedFeed <-
     if saveSourceFeedEntries
@@ -267,16 +255,16 @@ fetchCacheFeed saveSourceFeedEntries (URL url) feedUpdated = do
 
   when (isRight freshOrCachedFeed) $
     case Feed.textFeed (Feed.AtomFeed mergedFeed) of
-      Nothing -> logMsg WRN $ "Failed to export feed for URL: " <> url
+      Nothing -> logMsg WRN $ "Failed to export feed for URL: " <> show url
       Just txt ->
         (writeFile cacheFilePath txt >> logMsg DBG ("Cached to: " <> cacheFilePath))
           `catchError` (logMsg WRN . ("Failed to write cache file: " <>) . show)
 
   return mergedFeed
 
-fetchFeed :: String -> UTCTime -> App Atom.Feed
+fetchFeed :: URL -> UTCTime -> App Atom.Feed
 fetchFeed url modTime = do
-  atomFeed <- fetchAndParse url
+  atomFeed <- fetchAndParse url.toString
   logMsg DBG $
     "Fetched feed with " <> show (length $ Atom.feedEntries atomFeed) <> " entries"
   return atomFeed
@@ -290,7 +278,7 @@ fetchFeed url modTime = do
         >=> checkForStatusNotModified
         >>> fromMaybeOrThrow FeedNotModifiedError
         >=> Feed.parseFeedSource
-        >>> fromMaybeOrThrow (FeedParseError url)
+        >>> fromMaybeOrThrow (FeedParseError url.toString)
         >=> feedToAtom
 
     addHeaders request =

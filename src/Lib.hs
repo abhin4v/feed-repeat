@@ -3,9 +3,10 @@
 {-# LANGUAGE DerivingStrategies #-}
 
 module Lib
-  ( URL (..),
-    Positive (),
-    newPositive,
+  ( URL,
+    newURL,
+    NonNegative,
+    newNonNegative,
     FeedTask (..),
     AppError (..),
     feedToAtom,
@@ -29,6 +30,7 @@ import Data.Aeson ((.!=), (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Function ((&))
+import Data.Functor (($>))
 import Data.HashMap.Strict qualified as HM
 import Data.Hashable (Hashable)
 import Data.List (sortBy)
@@ -51,47 +53,62 @@ import Text.Feed.Query qualified as Feed
 import Text.Feed.Types qualified as Feed
 import Prelude hiding (writeFile)
 
-newtype URL = URL String
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (Aeson.FromJSON, Hashable)
+newtype URL = URL {unURL :: String}
+  deriving stock (Eq, Generic)
+  deriving anyclass (Hashable)
 
-newtype Positive a = Positive {unPositive :: a}
+instance HasField "toString" URL String where
+  getField = unURL
+
+instance Show URL where
+  show = unURL
+
+newURL :: String -> Maybe URL
+newURL url = URI.parseURI url $> (URL url)
+
+instance Aeson.FromJSON URL where
+  parseJSON = Aeson.withText "String" $ \str ->
+    case newURL (T.unpack str) of
+      Nothing -> fail $ "Expect an URL, but found: " <> T.unpack str
+      Just url -> return url
+
+newtype NonNegative a = NonNegative {unNonNegative :: a}
   deriving stock (Eq)
 
-instance HasField "toNum" (Positive a) a where
-  getField = unPositive
+instance HasField "toNum" (NonNegative a) a where
+  getField = unNonNegative
 
-instance (Show a) => Show (Positive a) where
-  show (Positive a) = show a
+instance (Show a) => Show (NonNegative a) where
+  show (NonNegative a) = show a
 
-newPositive :: (Ord a, Num a) => a -> Maybe (Positive a)
-newPositive num = if num >= 0 then Just $ Positive num else Nothing
+newNonNegative :: (Ord a, Num a) => a -> Maybe (NonNegative a)
+newNonNegative num = if num >= 0 then Just $ NonNegative num else Nothing
 
-instance Aeson.FromJSON (Positive Int) where
+instance Aeson.FromJSON (NonNegative Int) where
   parseJSON = Aeson.withScientific "number" $ \num ->
     if num >= 0
       then case Scientific.toBoundedInteger num of
-        Just n -> return $ Positive n
-        Nothing -> fail $ "Expected positive int, but found: " <> show num
-      else fail $ "Expected positive int, but found: " <> show num
+        Just n -> return $ NonNegative n
+        Nothing -> fail $ "Expected non-negative int, but found: " <> show num
+      else fail $ "Expected non-negative int, but found: " <> show num
 
-instance Aeson.FromJSON (Positive Double) where
+instance Aeson.FromJSON (NonNegative Double) where
   parseJSON = Aeson.withScientific "number" $ \num ->
     if num >= 0
       then case Scientific.toBoundedRealFloat num of
-        Right n -> return $ Positive n
-        Left _ -> fail $ "Expected positive double, but found: " <> show num
-      else fail $ "Expected positive double, but found: " <> show num
+        Right n -> return $ NonNegative n
+        Left _ -> fail $ "Expected non-negative double, but found: " <> show num
+      else fail $ "Expected non-negative double, but found: " <> show num
 
 data FeedTask = FeedTask
   { sourceFeedUrl :: URL,
     outputFilename :: String,
     saveSourceFeedEntries :: Bool,
-    repeatedEntryCount :: Positive Int,
-    minimumEntryAgeDays :: Positive Int,
-    minRunGapDays :: Positive Int,
-    maxEntryCountPerDomain :: Maybe (Positive Int),
-    selectionAlpha :: Positive Double
+    repeatedEntryCount :: NonNegative Int,
+    minimumEntryAgeDays :: NonNegative Int,
+    minRunGapDays :: NonNegative Int,
+    maxEntryCountPerDomain :: Maybe (NonNegative Int),
+    selectionAlpha :: NonNegative Double
   }
   deriving (Show, Eq, Generic)
 
@@ -103,9 +120,9 @@ instance Aeson.FromJSON FeedTask where
       <*> v .: "saveSourceFeedEntries"
       <*> v .: "repeatedEntryCount"
       <*> v .: "minimumEntryAgeDays"
-      <*> v .:? "minRunGapDays" .!= Positive 1
+      <*> v .:? "minRunGapDays" .!= NonNegative 1
       <*> v .:? "maxEntryCountPerDomain"
-      <*> v .:? "selectionAlpha" .!= Positive 1
+      <*> v .:? "selectionAlpha" .!= NonNegative 1
 
 data AppError
   = IOError IOException
@@ -226,12 +243,12 @@ selectEntries task entries = do
     -- A-Res algorithm with per-domain limit
     select now es = do
       keys <- forM es $ \entry -> do
-        r <- randomRIO (0, 1)
+        r <- randomRIO (1e-12, 1)
         return $ log r / computeWeight now entry
       zip es keys
         & sortBy (comparing (Down . snd))
         & map fst
-        & limitEntries (maybe maxBound unPositive task.maxEntryCountPerDomain) mempty
+        & limitEntries (maybe maxBound unNonNegative task.maxEntryCountPerDomain) mempty
         & return
 
     limitEntries maxAllowed sourceCounts =
@@ -256,13 +273,18 @@ parseDate :: T.Text -> Maybe UTCTime
 parseDate ds =
   let formats =
         [ "%Y-%m-%dT%H:%M:%S%Z",
+          "%Y-%m-%dT%H:%M:%S%EZ",
+          "%Y-%m-%dT%H:%M:%SZ",
           "%Y-%m-%dT%H:%M:%S%Q%Z",
           rfc822DateFormat,
           "%Y-%m-%d",
           "%Y-%-m-%-d",
           "%a, %d %b %Y %H:%M %Z", -- Mon, 14 Jul 2025 10:30 +0000
           "%d %b %Y %H:%M:%S %Z", -- 17 Jul 2022 00:00:00 GMT
-          "%a, %d %B %Y %H:%M:%S %Z" -- Mon, 08 December 2025 11:07:49 +0000
+          "%a, %d %B %Y %H:%M:%S %Z", -- Mon, 08 December 2025 11:07:49 +0000
+          "%a, %d %b %Y %H:%M %EZ", -- Mon, 14 Jul 2025 10:30 +00:00
+          "%d %b %Y %H:%M:%S %EZ", -- 17 Jul 2022 00:00:00 +00:00
+          "%a, %d %B %Y %H:%M:%S %EZ" -- Mon, 08 December 2025 11:07:49 +00:00
         ]
    in asum $ map (\fmt -> parseTimeM True defaultTimeLocale fmt $ T.unpack ds) formats
 
