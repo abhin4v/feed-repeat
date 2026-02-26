@@ -23,10 +23,12 @@ extra-source-files: README.md
 
 common common-config
   build-depends:
+    , aeson
     , base                  >=4.18 && <5
     , bytestring
     , directory
     , either
+    , extra
     , filepath
     , hashable
     , text                  >=2.0
@@ -39,6 +41,7 @@ common common-config
     OverloadedRecordDot
     OverloadedStrings
     RecordWildCards
+    Strict
 
   ghc-options:
     -Weverything -Wno-all-missed-specialisations -Wno-deriving-typeable
@@ -57,7 +60,6 @@ library
   hs-source-dirs:  src
   exposed-modules: Lib
   build-depends:
-    , extra
     , feed
     , http-client
     , mtl
@@ -71,8 +73,6 @@ executable feed-repeat
   main-is:        Main.hs
   hs-source-dirs: app
   build-depends:
-    , aeson
-    , extra
     , feed
     , feed-repeat
     , http-client

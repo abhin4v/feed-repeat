@@ -1,8 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE Strict #-}
-
 module Main where
 
 import Control.Arrow ((>>>))
@@ -11,14 +6,12 @@ import Control.Monad (forM, forM_, when)
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
-import Data.Aeson (withObject, (.!=), (.:), (.:?))
-import Data.Aeson qualified as Aeson
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 import Data.Either (isRight)
 import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
-import Data.Hashable (Hashable, hash)
+import Data.Hashable (hash)
 import Data.List (nub, (\\))
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
@@ -28,7 +21,6 @@ import Data.Time (NominalDiffTime, TimeZone, UTCTime (..))
 import Data.Time qualified as Time
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.Yaml qualified as Yaml
-import GHC.Generics (Generic)
 import Lib
 import Network.HTTP.Client qualified as HTTP
 import Network.HTTP.Simple qualified as HTTP
@@ -65,32 +57,6 @@ import Prelude hiding (writeFile)
 --
 -- Selected entries are assigned new timestamps and UUIDs, and added to the output file.
 data LogLevel = ERR | WRN | INF | DBG deriving (Show)
-
-newtype URL = URL String
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (Aeson.FromJSON, Hashable)
-
-data FeedTask = FeedTask
-  { sourceFeedUrl :: URL,
-    outputFilename :: String,
-    saveSourceFeedEntries :: Bool,
-    repeatedEntryCount :: Int,
-    minimumEntryAgeDays :: Int,
-    minRunGapDays :: Int,
-    maxEntryCountPerDomain :: Maybe Int
-  }
-  deriving (Show, Eq, Generic)
-
-instance Aeson.FromJSON FeedTask where
-  parseJSON = withObject "FeedTask" $ \v ->
-    FeedTask
-      <$> v .: "sourceFeedUrl"
-      <*> v .: "outputFilename"
-      <*> v .: "saveSourceFeedEntries"
-      <*> v .: "repeatedEntryCount"
-      <*> v .: "minimumEntryAgeDays"
-      <*> v .:? "minRunGapDays" .!= 1
-      <*> v .:? "maxEntryCountPerDomain"
 
 data LogConfig = LogConfig
   { omitTimestamp :: Bool,
@@ -238,9 +204,8 @@ processSourceFeed task mOutputFeed sourceFeed = do
   -- select entries
   now <- liftIO Time.getCurrentTime
   let timestamp = T.pack $ iso8601Show now
-      minAgeSeconds = fromIntegral task.minimumEntryAgeDays * Time.nominalDay
   selectedEntries <-
-    liftIO (selectEntries task.repeatedEntryCount minAgeSeconds task.maxEntryCountPerDomain allEntries)
+    liftIO (selectEntries task allEntries)
       >>= traverse
         ( \e -> do
             entryId <- mkUuidUrn
@@ -287,7 +252,7 @@ fetchCacheFeed saveSourceFeedEntries (URL url) feedUpdated = do
   freshOrCachedFeed <-
     (Right <$> fetchFeed url feedUpdated) `catchError` \err -> do
       case err of
-        FeedNotModifiedError -> logMsg DBG $ "Feed not modified, using cached"
+        FeedNotModifiedError -> logMsg DBG "Feed not modified, using cached"
         _ ->
           logMsg WRN $
             "Unable to fetch fresh feed for URL: " <> url <> ", using cached: " <> show err

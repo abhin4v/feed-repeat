@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
+
 module Lib where
 
 import Control.Applicative (asum, (<|>))
@@ -6,18 +9,22 @@ import Control.Exception (Exception, IOException, displayException, try)
 import Control.Monad (forM, (>=>))
 import Control.Monad.Except (MonadError, liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Aeson ((.!=), (.:), (.:?))
+import Data.Aeson qualified as Aeson
 import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Function ((&))
 import Data.HashMap.Strict qualified as HM
+import Data.Hashable (Hashable)
 import Data.List (sortBy)
 import Data.List.Extra (nubOrdOn)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Ord (Down (..), comparing)
 import Data.Text qualified as T
-import Data.Time (NominalDiffTime, UTCTime (..), diffUTCTime, getCurrentTime, nominalDay)
+import Data.Time (UTCTime (..), diffUTCTime, getCurrentTime, nominalDay)
 import Data.Time.Format (defaultTimeLocale, parseTimeM, rfc822DateFormat)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.UUID.V4 qualified as UUID
+import GHC.Generics (Generic)
 import Network.HTTP.Client qualified as HTTP
 import Network.URI qualified as URI
 import System.Random (randomRIO)
@@ -25,6 +32,32 @@ import Text.Atom.Feed qualified as Atom
 import Text.Feed.Query qualified as Feed
 import Text.Feed.Types qualified as Feed
 import Prelude hiding (writeFile)
+
+newtype URL = URL String
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (Aeson.FromJSON, Hashable)
+
+data FeedTask = FeedTask
+  { sourceFeedUrl :: URL,
+    outputFilename :: String,
+    saveSourceFeedEntries :: Bool,
+    repeatedEntryCount :: Int,
+    minimumEntryAgeDays :: Int,
+    minRunGapDays :: Int,
+    maxEntryCountPerDomain :: Maybe Int
+  }
+  deriving (Show, Eq, Generic)
+
+instance Aeson.FromJSON FeedTask where
+  parseJSON = Aeson.withObject "FeedTask" $ \v ->
+    FeedTask
+      <$> v .: "sourceFeedUrl"
+      <*> v .: "outputFilename"
+      <*> v .: "saveSourceFeedEntries"
+      <*> v .: "repeatedEntryCount"
+      <*> v .: "minimumEntryAgeDays"
+      <*> v .:? "minRunGapDays" .!= 1
+      <*> v .:? "maxEntryCountPerDomain"
 
 data AppError
   = IOError IOException
@@ -121,11 +154,13 @@ mergeFeeds feed1 feed2 =
       uniqueEntries = nubOrdOn (Feed.getItemLink . Feed.AtomItem) sortedEntries
    in feed1 {Atom.feedEntries = uniqueEntries}
 
-selectEntries :: Int -> NominalDiffTime -> Maybe Int -> [Atom.Entry] -> IO [Atom.Entry]
-selectEntries entryCount minAgeSeconds maxEntryCountPerDomain entries = do
+selectEntries :: FeedTask -> [Atom.Entry] -> IO [Atom.Entry]
+selectEntries task entries = do
   now <- getCurrentTime
   select now $ filter (isOldEnough now) entries
   where
+    minAgeSeconds = fromIntegral task.minimumEntryAgeDays * nominalDay
+
     isOldEnough currentTime entry =
       case parseDate $ Atom.entryUpdated entry of
         Nothing -> True
@@ -146,11 +181,11 @@ selectEntries entryCount minAgeSeconds maxEntryCountPerDomain entries = do
       zip es keys
         & sortBy (comparing (Down . snd))
         & map fst
-        & limitEntries (fromMaybe maxBound maxEntryCountPerDomain) mempty
+        & limitEntries (fromMaybe maxBound task.maxEntryCountPerDomain) mempty
         & return
 
     limitEntries maxAllowed sourceCounts =
-      foldl' step ((entryCount, sourceCounts), [])
+      foldl' step ((task.repeatedEntryCount, sourceCounts), [])
         >>> snd
         >>> reverse
       where

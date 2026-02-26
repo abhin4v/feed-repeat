@@ -12,6 +12,18 @@ import Text.Atom.Feed qualified as Atom
 import Text.Feed.Types qualified as Feed
 import Text.RSS.Syntax qualified as RSS
 
+mkTask :: Int -> Int -> Maybe Int -> FeedTask
+mkTask count minAgeDays maxPerDomain =
+  FeedTask
+    { sourceFeedUrl = URL "http://example.com/feed",
+      outputFilename = "test-output.xml",
+      saveSourceFeedEntries = False,
+      repeatedEntryCount = count,
+      minimumEntryAgeDays = minAgeDays,
+      minRunGapDays = 1,
+      maxEntryCountPerDomain = maxPerDomain
+    }
+
 main :: IO ()
 main = hspec $ do
   describe "parseDate" $ do
@@ -222,37 +234,37 @@ main = hspec $ do
 
   describe "selectEntries" $ do
     it "returns empty list when entries list is empty" $ do
-      result <- selectEntries 0 (60 * 60 * 24 * 3) Nothing []
+      result <- selectEntries (mkTask 0 3 Nothing) []
       length result `shouldBe` 0
 
     it "returns at most n entries" $ do
       let entry1 =
             (Atom.nullEntry "id1" (Atom.TextString "entry1") "Sun, 01 Jan 2025 10:30:45 GMT")
-              { Atom.entryLinks = [(Atom.nullLink "http://example.com/1")]
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/1"]
               }
           entry2 =
             (Atom.nullEntry "id2" (Atom.TextString "entry2") "Sun, 01 Jan 2025 10:30:45 GMT")
-              { Atom.entryLinks = [(Atom.nullLink "http://example.com/2")]
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/2"]
               }
           entry3 =
             (Atom.nullEntry "id3" (Atom.TextString "entry3") "Sun, 01 Jan 2025 10:30:45 GMT")
-              { Atom.entryLinks = [(Atom.nullLink "http://example.com/3")]
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/3"]
               }
           entries = [entry1, entry2, entry3]
-      result <- selectEntries 1 (60 * 60 * 24 * 365) Nothing entries
+      result <- selectEntries (mkTask 1 365 Nothing) entries
       length result `shouldSatisfy` (<= 1)
 
     it "filters out entries newer than minimum age" $ do
       let oldEntry =
             (Atom.nullEntry "id1" (Atom.TextString "old") "2020-01-01T10:30:45Z")
-              { Atom.entryLinks = [(Atom.nullLink "http://example.com/old")]
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/old"]
               }
           newEntry =
             (Atom.nullEntry "id2" (Atom.TextString "new") "2025-11-25T10:30:45Z")
-              { Atom.entryLinks = [(Atom.nullLink "http://example.com/new")]
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/new"]
               }
           entries = [oldEntry, newEntry]
-      result <- selectEntries 1 (60 * 60 * 24 * 3) Nothing entries
+      result <- selectEntries (mkTask 1 3 Nothing) entries
       case result of
         [entry] -> Atom.entryId entry `shouldBe` "id1"
         _ -> expectationFailure $ "Expected exactly 1 entry, got " <> show (length result)
@@ -260,18 +272,18 @@ main = hspec $ do
     it "limits entries per domain when maxEntryCountPerDomain is set" $ do
       let entry1 =
             (Atom.nullEntry "id1" (Atom.TextString "entry1") "2020-01-01T10:30:45Z")
-              { Atom.entryLinks = [(Atom.nullLink "http://example.com/1")]
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/1"]
               }
           entry2 =
             (Atom.nullEntry "id2" (Atom.TextString "entry2") "2020-01-02T10:30:45Z")
-              { Atom.entryLinks = [(Atom.nullLink "http://example.com/2")]
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/2"]
               }
           entry3 =
             (Atom.nullEntry "id3" (Atom.TextString "entry3") "2020-01-03T10:30:45Z")
-              { Atom.entryLinks = [(Atom.nullLink "http://other.com/1")]
+              { Atom.entryLinks = [Atom.nullLink "http://other.com/1"]
               }
           entries = [entry1, entry2, entry3]
-      result <- selectEntries 3 0 (Just 1) entries
+      result <- selectEntries (mkTask 3 0 (Just 1)) entries
       length result `shouldBe` 2
       let domains =
             mapMaybe (listToMaybe . Atom.entryLinks >=> extractDomain . Atom.linkHref) result
@@ -562,7 +574,7 @@ main = hspec $ do
                             (Atom.TextString $ T.pack $ "Entry from " ++ show y)
                             (T.pack $ show y ++ "-01-01T00:00:00Z")
                         )
-                          { Atom.entryLinks = [(Atom.nullLink $ "http://example.com/" <> entryId)]
+                          { Atom.entryLinks = [Atom.nullLink $ "http://example.com/" <> entryId]
                           }
                 )
                 [1 ..]
@@ -570,7 +582,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ selectEntries 100 0 Nothing entries
+            selections <- replicateM 10 $ selectEntries (mkTask 100 0 Nothing) entries
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 
