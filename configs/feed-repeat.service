@@ -11,9 +11,6 @@ WorkingDirectory=/var/lib/feed-repeat
 Environment=RUNNING_UNDER_SYSTEMD=1
 ExecStart=/usr/local/bin/feed-repeat --config /etc/feed-repeat/config.yaml --output-dir /var/lib/feed-repeat --cache-dir /var/cache/feed-repeat
 
-Restart=on-failure
-RestartSec=5s
-
 # Security settings
 AmbientCapabilities=
 CapabilityBoundingSet=~CAP_RAWIO ~CAP_MKNOD ~CAP_AUDIT_CONTROL ~CAP_AUDIT_READ ~CAP_AUDIT_WRITE ~CAP_SYS_BOOT ~CAP_SYS_TIME ~CAP_SYS_MODULE ~CAP_SYS_PACCT ~CAP_LEASE ~CAP_LINUX_IMMUTABLE ~CAP_IPC_LOCK ~CAP_BLOCK_SUSPEND ~CAP_WAKE_ALARM ~CAP_SYS_TTY_CONFIG ~CAP_MAC_ADMIN ~CAP_MAC_OVERRIDE ~CAP_NET_ADMIN ~CAP_NET_BROADCAST ~CAP_NET_RAW ~CAP_SYS_ADMIN ~CAP_SYS_PTRACE ~CAP_SYSLOG

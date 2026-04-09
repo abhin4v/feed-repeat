@@ -157,8 +157,6 @@ in
         Group = serviceName;
         Type = "oneshot";
         WorkingDirectory = cfg.outputDir;
-        Restart = "on-failure";
-        RestartSec = "5s";
 
         AmbientCapabilities = [ ];
         CapabilityBoundingSet = [
