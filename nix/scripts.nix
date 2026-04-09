@@ -20,7 +20,7 @@ let
   '';
   run = pkgs.writeShellScriptBin "run" ''
     set -euo pipefail
-    result/bin/feed-repeat --config config.yaml --output-dir output --cache-dir cache
+    result/bin/feed-repeat --config config.yaml --output-dir output --cache-dir cache | awk '{ print strftime("%Y-%m-%d %H:%M:%S"), $0; }'
   '';
   build-docker = pkgs.writeShellScriptBin "build-docker" ''
     set -euo pipefail

@@ -4,7 +4,16 @@ import Control.Arrow ((>>>))
 import Control.Exception (IOException, displayException, throwIO, try)
 import Control.Monad (forM_, unless, void, when, (>=>))
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Logger
+  ( LoggingT,
+    MonadLogger,
+    logDebugN,
+    logErrorN,
+    logInfoN,
+    logWarnN,
+    runStdoutLoggingT,
+  )
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Retry qualified as Retry
 import Data.ByteString qualified as BS
@@ -19,7 +28,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Lazy qualified as TL
-import Data.Time (NominalDiffTime, TimeZone, UTCTime (..))
+import Data.Time (NominalDiffTime, UTCTime (..))
 import Data.Time qualified as Time
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.Version (showVersion)
@@ -31,7 +40,6 @@ import Network.HTTP.Types qualified as HTTP
 import Options.Applicative qualified as Opt
 import PackageInfo_feed_repeat qualified as PI
 import System.Directory (createDirectoryIfMissing, renameFile)
-import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -60,13 +68,6 @@ import Prelude hiding (writeFile)
 -- sampling where older entries have higher probability.
 --
 -- Selected entries are assigned new timestamps and UUIDs, and added to the output file.
-data LogLevel = ERR | WRN | INF | DBG deriving (Show)
-
-data LogConfig = LogConfig
-  { omitTimestamp :: Bool,
-    timeZone :: TimeZone
-  }
-
 data Options = Options
   { configPath :: FilePath,
     outputDir :: FilePath,
@@ -74,12 +75,9 @@ data Options = Options
     validateOnly :: Bool
   }
 
-data Env = Env
-  { options :: Options,
-    logConfig :: LogConfig
-  }
+newtype Env = Env {options :: Options}
 
-type App a = ExceptT AppError (ReaderT Env IO) a
+type App a = ExceptT AppError (ReaderT Env (LoggingT IO)) a
 
 requestTimeoutMicros :: Int
 requestTimeoutMicros = 30_000_000 -- 30 sec
@@ -101,16 +99,14 @@ main = do
             <> Opt.header ("feed-repeat version " <> showVersion PI.version)
             <> Opt.footer (PI.homepage <> " © " <> PI.copyright)
         )
-  runningUnderSystemd <- (== Just "1") <$> lookupEnv "RUNNING_UNDER_SYSTEMD"
-  tz <- Time.getCurrentTimeZone
-  let env = Env options $ LogConfig runningUnderSystemd tz
-  createDirs env [options.outputDir, options.cacheDir]
+  let env = Env options
+  createDirs [options.outputDir, options.cacheDir]
   run env
   where
-    createDirs env = traverse_ $ \dir ->
+    createDirs = traverse_ $ \dir ->
       try (createDirectoryIfMissing True dir) >>= \case
         Left (e :: IOException) -> do
-          logIO env ERR $ "Failed to create directory: " <> displayException e
+          logErrorIO $ "Failed to create directory: " <> displayException e
           exitFailure
         Right _ -> return ()
 
@@ -141,28 +137,28 @@ optionsParser =
 run :: Env -> IO ()
 run env =
   Yaml.decodeFileEither env.options.configPath >>= \case
-    Left err -> logIO env ERR ("Error reading config: " <> show err) >> exitFailure
-    Right tasks | null tasks -> logIO env ERR "No tasks found in file" >> exitFailure
+    Left err -> logErrorIO ("Error reading config: " <> show err) >> exitFailure
+    Right tasks | null tasks -> logErrorIO "No tasks found in file" >> exitFailure
     Right tasks ->
-      validateTasks env tasks >>= \case
+      validateTasks tasks >>= \case
         Nothing -> exitFailure
         Just validated
           | env.options.validateOnly ->
-              logIO env INF $ "Config valid: " <> show (length validated) <> " tasks"
+              logInfoIO $ "Config valid: " <> show (length validated) <> " tasks"
           | otherwise -> forM_ validated $ \task ->
-              runReaderT (runExceptT $ runTask task) env >>= \case
-                Left err -> logIO env ERR $ show err
+              runStdoutLoggingT (runReaderT (runExceptT $ runTask task) env) >>= \case
+                Left err -> logErrorIO $ show err
                 Right _ -> return ()
 
-validateTasks :: Env -> [FeedTask] -> IO (Maybe [FeedTask])
-validateTasks env tasks = do
+validateTasks :: [FeedTask] -> IO (Maybe [FeedTask])
+validateTasks tasks = do
   -- Check for duplicate output filenames
   let outputFilenames = map outputFilename tasks
   let duplicates = outputFilenames \\ nub outputFilenames
   if not (null duplicates)
     then do
-      logIO env ERR "Duplicate output filenames found:"
-      forM_ (nub duplicates) (logIO env ERR . ("  " <>))
+      logErrorIO "Duplicate output filenames found:"
+      forM_ (nub duplicates) (logErrorIO . ("  " <>))
       return Nothing
     else return $ Just tasks
 
@@ -170,8 +166,8 @@ runTask :: FeedTask -> App ()
 runTask task = do
   env <- ask
   let url = task.sourceFeedUrl
-  logMsg DBG $ "Processing: " <> show url
-  logMsg DBG $
+  logDebug $ "Processing: " <> show url
+  logDebug $
     ("Task params: saveSourceFeedEntries=" <> show task.saveSourceFeedEntries)
       <> (", repeatedEntryCount=" <> show task.repeatedEntryCount)
       <> (", minimumEntryAgeDays=" <> show task.minimumEntryAgeDays)
@@ -181,7 +177,7 @@ runTask task = do
 
   outputFeed <-
     (Just <$> parseAtomFile outputPath) `catchError` \err -> do
-      logMsg WRN $ "Failed to read output feed: " <> show err
+      logWarn $ "Failed to read output feed: " <> show err
       return Nothing
   let ancientTime = UTCTime (Time.fromGregorian 2000 1 1) 0
       outputFeedUpdated = case outputFeed of
@@ -189,7 +185,7 @@ runTask task = do
         Just outputFeed -> fromMaybe ancientTime $ parseDate $ Atom.feedUpdated outputFeed
   let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
   if Time.diffUTCTime now outputFeedUpdated < minRunGapSeconds
-    then logMsg INF $ "Skipping run for URL: " <> show url
+    then logInfo $ "Skipping run for URL: " <> show url
     else
       fetchCacheFeed task.saveSourceFeedEntries task.sourceFeedUrl outputFeedUpdated
         >>= processSourceFeed task outputFeed
@@ -202,7 +198,7 @@ processSourceFeed task mOutputFeed sourceFeed = do
     Just outputFeed -> return $ mergeFeeds sourceFeed outputFeed
 
   let allEntries = Atom.feedEntries mergedFeed
-  logMsg DBG $ "Merged feed has " <> show (length allEntries) <> " entries"
+  logDebug $ "Merged feed has " <> show (length allEntries) <> " entries"
 
   -- select entries
   now <- liftIO Time.getCurrentTime
@@ -215,14 +211,14 @@ processSourceFeed task mOutputFeed sourceFeed = do
             return e {Atom.entryId = entryId, Atom.entryUpdated = timestamp}
         )
   if null selectedEntries
-    then logMsg WRN "Selected no entries for repetition"
+    then logWarn "Selected no entries for repetition"
     else do
-      logMsg DBG $ "Selected " <> show (length selectedEntries) <> " entries for repetition"
+      logDebug $ "Selected " <> show (length selectedEntries) <> " entries for repetition"
 
       -- merge entries
       let outputFeedEntries = maybe [] Atom.feedEntries mOutputFeed
       let combinedEntries = selectedEntries <> outputFeedEntries
-      logMsg DBG $
+      logDebug $
         "Combined entries: "
           <> (show (length selectedEntries) <> " new + ")
           <> (show (length outputFeedEntries) <> " existing = ")
@@ -245,8 +241,8 @@ processSourceFeed task mOutputFeed sourceFeed = do
       tryOrThrow IOError $
         setFileMode outputPath $
           foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
-      logMsg DBG $ "Wrote to: " <> outputPath
-      logMsg INF $ "Processed " <> show url <> " successfully"
+      logDebug $ "Wrote to: " <> outputPath
+      logInfo $ "Processed " <> show url <> " successfully"
 
 fetchCacheFeed :: Bool -> URL -> UTCTime -> App Atom.Feed
 fetchCacheFeed saveSourceFeedEntries url feedUpdated = do
@@ -255,9 +251,9 @@ fetchCacheFeed saveSourceFeedEntries url feedUpdated = do
   freshOrCachedFeed <-
     (Right <$> fetchFeed url feedUpdated) `catchError` \err -> do
       case err of
-        FeedNotModifiedError -> logMsg DBG $ "Feed not modified: " <> show url <> ", using cached"
+        FeedNotModifiedError -> logDebug $ "Feed not modified: " <> show url <> ", using cached"
         _ ->
-          logMsg WRN $
+          logWarn $
             "Unable to fetch fresh feed: " <> show url <> ", using cached: " <> show err
       Left <$> parseAtomFile cacheFilePath
   mergedFeed <-
@@ -270,17 +266,17 @@ fetchCacheFeed saveSourceFeedEntries url feedUpdated = do
 
   when (isRight freshOrCachedFeed) $
     case Feed.textFeed (Feed.AtomFeed mergedFeed) of
-      Nothing -> logMsg WRN $ "Failed to export feed for URL: " <> show url
+      Nothing -> logWarn $ "Failed to export feed for URL: " <> show url
       Just txt ->
-        (writeFile cacheFilePath txt >> logMsg DBG ("Cached to: " <> cacheFilePath))
-          `catchError` (logMsg WRN . ("Failed to write cache file: " <>) . show)
+        (writeFile cacheFilePath txt >> logDebug ("Cached to: " <> cacheFilePath))
+          `catchError` (logWarn . ("Failed to write cache file: " <>) . show)
 
   return mergedFeed
 
 fetchFeed :: URL -> UTCTime -> App Atom.Feed
 fetchFeed url modTime = do
   atomFeed <- fetchAndParse url.toString
-  logMsg DBG $
+  logDebug $
     "Fetched feed with " <> show (length $ Atom.feedEntries atomFeed) <> " entries"
   return atomFeed
   where
@@ -338,7 +334,7 @@ parseAtomFile filePath = do
   feed <- readAndParse filePath
   case feed of
     Feed.AtomFeed af -> do
-      logMsg DBG $
+      logDebug $
         ("Parsed Atom file " <> filePath <> " with ")
           <> (show (length $ Feed.getFeedItems feed) <> " entries")
       return af
@@ -350,26 +346,15 @@ parseAtomFile filePath = do
         >=> Feed.parseFeedString
         >>> fromMaybeOrThrow (FeedParseError filePath)
 
-logMsg :: LogLevel -> String -> App ()
-logMsg level msg = do
-  env <- ask
-  logMsg' env.logConfig level msg
+logInfoIO, logErrorIO :: String -> IO ()
+logInfoIO = runStdoutLoggingT . logInfo
+logErrorIO = runStdoutLoggingT . logError
 
-logIO :: Env -> LogLevel -> String -> IO ()
-logIO env = logMsg' env.logConfig
-
-logMsg' :: (MonadIO m) => LogConfig -> LogLevel -> String -> m ()
-logMsg' logConfig level msg = do
-  logLine <-
-    (<> "[" <> show level <> "] " <> msg)
-      <$> if logConfig.omitTimestamp
-        then return ""
-        else do
-          now <- liftIO Time.getCurrentTime
-          let localTime = Time.utcToLocalTime logConfig.timeZone now
-          let timestamp = Time.formatTime Time.defaultTimeLocale "%Y-%m-%d %H:%M:%S" localTime
-          return $ timestamp <> " "
-  liftIO $ putStrLn logLine
+logDebug, logInfo, logWarn, logError :: (MonadLogger m) => String -> m ()
+logDebug = logDebugN . T.pack
+logInfo = logInfoN . T.pack
+logWarn = logWarnN . T.pack
+logError = logErrorN . T.pack
 
 writeFile :: FilePath -> TL.Text -> App ()
 writeFile fp content = do
