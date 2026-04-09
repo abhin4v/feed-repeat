@@ -1,13 +1,15 @@
 module Main where
 
 import Control.Arrow ((>>>))
-import Control.Exception (IOException, displayException, try)
-import Control.Monad (forM_, when, (>=>))
+import Control.Exception (IOException, displayException, throwIO, try)
+import Control.Monad (forM_, unless, void, when, (>=>))
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
+import Control.Retry qualified as Retry
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
+import Data.ByteString.Lazy qualified as LBS
 import Data.Either (isRight)
 import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
@@ -273,7 +275,7 @@ fetchFeed url modTime = do
       HTTP.parseRequest
         >>> tryOrThrow HTTPError
         >=> addHeaders
-        >>> HTTP.httpLBS
+        >>> fetchWithRetry
         >>> tryOrThrow HTTPError
         >=> checkForStatusNotModified
         >>> fromMaybeOrThrow FeedNotModifiedError
@@ -294,6 +296,25 @@ fetchFeed url modTime = do
                    )
                  ]
         }
+
+    fetchWithRetry =
+      Retry.retrying
+        (Retry.capDelay 60_000_000 $ Retry.exponentialBackoff 1_000_000 <> Retry.limitRetries 3)
+        (const $ pure . HTTP.statusIsServerError . HTTP.responseStatus)
+        . const
+        . fetch
+
+    fetch request =
+      HTTP.httpLBS $
+        request
+          { HTTP.checkResponse = \req resp -> do
+              let status = HTTP.responseStatus resp
+              unless (HTTP.statusIsSuccessful status || HTTP.statusIsRedirection status) $ do
+                chunk <- HTTP.brReadSome (HTTP.responseBody resp) 1024
+                let resp' = void resp
+                let ex = HTTP.StatusCodeException resp' (LBS.toStrict chunk)
+                throwIO $ HTTP.HttpExceptionRequest req ex
+          }
 
     checkForStatusNotModified resp
       | HTTP.responseStatus resp == HTTP.status304 = Nothing

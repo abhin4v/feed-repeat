@@ -70,7 +70,7 @@ instance Show URL where
   show = unURL
 
 newURL :: String -> Maybe URL
-newURL url = URI.parseURI url $> (URL url)
+newURL url = URI.parseURI url $> URL url
 
 instance Aeson.FromJSON URL where
   parseJSON = Aeson.withText "String" $ \str ->

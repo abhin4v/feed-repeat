@@ -81,6 +81,7 @@ executable feed-repeat
     , http-types
     , mtl
     , optparse-applicative
+    , retry
     , temporary
     , time
     , unix
