@@ -70,7 +70,8 @@ data LogConfig = LogConfig
 data Options = Options
   { configPath :: FilePath,
     outputDir :: FilePath,
-    cacheDir :: FilePath
+    cacheDir :: FilePath,
+    validateOnly :: Bool
   }
 
 data Env = Env
@@ -132,6 +133,10 @@ optionsParser =
           <> Opt.value "."
           <> Opt.help "Directory where cached Atom files will be stored"
       )
+    <*> Opt.switch
+      ( Opt.long "validate"
+          <> Opt.help "Only validate the config file and exit"
+      )
 
 run :: Env -> IO ()
 run env =
@@ -141,10 +146,13 @@ run env =
     Right tasks ->
       validateTasks env tasks >>= \case
         Nothing -> exitFailure
-        Just validated -> forM_ validated $ \task ->
-          runReaderT (runExceptT $ runTask task) env >>= \case
-            Left err -> logIO env ERR $ show err
-            Right _ -> return ()
+        Just validated
+          | env.options.validateOnly ->
+              logIO env INF $ "Config valid: " <> show (length validated) <> " tasks"
+          | otherwise -> forM_ validated $ \task ->
+              runReaderT (runExceptT $ runTask task) env >>= \case
+                Left err -> logIO env ERR $ show err
+                Right _ -> return ()
 
 validateTasks :: Env -> [FeedTask] -> IO (Maybe [FeedTask])
 validateTasks env tasks = do

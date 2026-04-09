@@ -287,6 +287,7 @@ feed-repeat --config config.yaml --output-dir ./output --cache-dir ./cache
 - `--config FILE`: Path to YAML configuration file containing feed sources (required).
 - `--output-dir DIR`: Directory where output Atom files will be written (required).
 - `--cache-dir DIR`: Directory for cached Atom files (default: current directory).
+- `--validate`: Only validate the config file and exit.
 
 ## Configuration
 
