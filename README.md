@@ -16,8 +16,6 @@ A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetch
   - [Web Server](#serving-feeds-with-a-web-server)
 - [CLI Usage](#cli-usage)
 - [Configuration](#configuration)
-- [How It Works](#how-it-works)
-- [Project Structure](#project-structure)
 - [License](#license)
 
 ## Features
@@ -206,7 +204,7 @@ build-docker
 docker load < result
 
 # Run the container
-docker run \
+docker run --rm \
   -v /path/to/config.yaml:/etc/feed-repeat/config.yaml:ro \
   -v feed-repeat-output:/var/lib/feed-repeat \
   -v feed-repeat-cache:/var/cache/feed-repeat \
