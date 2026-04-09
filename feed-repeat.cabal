@@ -1,18 +1,18 @@
-cabal-version:      3.4
+cabal-version:      3.12
 name:               feed-repeat
-version:            0.1.0.0
+version:            1.0.0
 synopsis:           Repeat entries from RSS/Atom feeds into new feeds
 description:
-  feed-repeat is a tool that processes RSS and Atom feeds, selecting older entries
-  and republishing them as fresh content. It supports intelligent entry selection
-  using weighted sampling where older entries have higher probability, optional
-  feed caching for resilience, and automatic format conversion.
+  A Haskell tool that repeats entries from RSS/Atom feeds into new feeds.
+  It fetches entries from source feeds, filters them by age, and selects
+  a random subset using weighted sampling where older entries have higher priority.
   .
-  The tool is configured via YAML and can be run standalone or integrated into
-  NixOS systems via the provided module.
+  The tool is configured via YAML and can be run standalone or integrated
+  into NixOS systems via the provided module.
 
 author:             Abhinav Sarkar
 maintainer:         Abhinav Sarkar
+copyright:          2026 Abhinav Sarkar
 license:            MIT
 license-file:       LICENSE
 build-type:         Simple
@@ -73,6 +73,7 @@ executable feed-repeat
   import:         common-config
   main-is:        Main.hs
   hs-source-dirs: app
+  other-modules:  PackageInfo_feed_repeat
   build-depends:
     , feed
     , feed-repeat

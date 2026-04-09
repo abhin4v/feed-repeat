@@ -22,12 +22,14 @@ import Data.Text.Lazy qualified as TL
 import Data.Time (NominalDiffTime, TimeZone, UTCTime (..))
 import Data.Time qualified as Time
 import Data.Time.Format.ISO8601 (iso8601Show)
+import Data.Version (showVersion)
 import Data.Yaml qualified as Yaml
 import Lib
 import Network.HTTP.Client qualified as HTTP
 import Network.HTTP.Simple qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Options.Applicative qualified as Opt
+import PackageInfo_feed_repeat qualified as PI
 import System.Directory (createDirectoryIfMissing, renameFile)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
@@ -89,10 +91,14 @@ main = do
   options <-
     Opt.execParser $
       Opt.info
-        optionsParser
+        ( optionsParser
+            Opt.<**> Opt.helper
+            Opt.<**> Opt.simpleVersioner ("feed-repeat version " <> showVersion PI.version <> " © " <> PI.copyright)
+        )
         ( Opt.fullDesc
-            <> Opt.progDesc "feed-repeat repeats entries of given feeds into new feeds"
-            <> Opt.header "feed-repeat"
+            <> Opt.progDesc PI.synopsis
+            <> Opt.header ("feed-repeat version " <> showVersion PI.version)
+            <> Opt.footer (PI.homepage <> " © " <> PI.copyright)
         )
   runningUnderSystemd <- (== Just "1") <$> lookupEnv "RUNNING_UNDER_SYSTEMD"
   tz <- Time.getCurrentTimeZone
@@ -126,7 +132,6 @@ optionsParser =
           <> Opt.value "."
           <> Opt.help "Directory where cached Atom files will be stored"
       )
-      Opt.<**> Opt.helper
 
 run :: Env -> IO ()
 run env =
