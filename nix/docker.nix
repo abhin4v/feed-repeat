@@ -1,9 +1,13 @@
+{ system }:
 let
   pkgs = import ./. {
-    system = "x86_64-linux";
+    inherit system;
     compiler = null;
   };
-  feed-repeat = import ./release.nix { static = true; };
+  feed-repeat = import ./release.nix {
+    inherit system;
+    static = true;
+  };
 in
 pkgs.dockerTools.buildImage {
   name = "feed-repeat";

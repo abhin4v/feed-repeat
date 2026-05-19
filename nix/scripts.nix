@@ -12,9 +12,10 @@ let
   '';
   build-static = pkgs.writeShellScriptBin "build-static" ''
     set -euo pipefail
-    nix-build nix/release.nix --arg static true
+    [[ $# -eq 1 ]] || { echo "Usage: build-static <arch>" >&2; exit 1; }
+    nix-build nix/release.nix --arg static true --argstr system "$1-linux"
     # add Nix GC root for static dependencies and build tools
-    nix-store --add-root .gcroots/static-deps \
+    nix-store --add-root .gcroots/static-deps-$1 \
       --realise `nix-instantiate --quiet --quiet --quiet nix/static-deps.nix` \
       > /dev/null
   '';
@@ -24,7 +25,8 @@ let
   '';
   build-docker = pkgs.writeShellScriptBin "build-docker" ''
     set -euo pipefail
-    nix-build nix/docker.nix
+    [[ $# -eq 1 ]] || { echo "Usage: build-docker <arch>" >&2; exit 1; }
+    nix-build nix/docker.nix --argstr system "$1-linux"
   '';
 in
 [

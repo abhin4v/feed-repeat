@@ -1,12 +1,19 @@
 {
+  sources ? import ./sources.nix,
+  nixpkgs ? sources.nixpkgs,
   system ? builtins.currentSystem,
   compiler ? null,
   static ? false,
 }:
 let
   pkgs = import ./. {
-    inherit compiler static;
-    system = if static then "x86_64-linux" else system;
+    inherit
+      sources
+      nixpkgs
+      compiler
+      static
+      system
+      ;
   };
   feed-repeat = pkgs.feed-repeat;
 in

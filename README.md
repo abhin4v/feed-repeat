@@ -86,7 +86,8 @@ Available scripts in Nix shell (defined in `scripts.nix`):
 build
 
 # Build a static binary
-build-static
+build-static x86_64
+# or build-static aarch64
 
 # Run the tool with example config
 run
@@ -200,7 +201,8 @@ A Docker image can be built with Nix:
 
 ```bash
 # Enter nix-shell, then build the Docker image
-build-docker
+build-docker x86_64
+# or build-docker aarch64
 
 # Load into Docker daemon
 docker load < result
@@ -214,7 +216,7 @@ docker run --rm \
 ```
 
 The Docker image includes:
-- Static binary built for x86_64-linux
+- Static binary built for x86_64-linux or aarch64-linux
 - CA certificates for HTTPS feed fetching
 - Mount points for configuration, output, and cache directories
 
