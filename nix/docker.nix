@@ -9,17 +9,16 @@ let
     static = true;
   };
 in
-pkgs.dockerTools.buildImage {
+pkgs.dockerTools.buildLayeredImage {
   name = "feed-repeat";
   tag = "latest";
-  copyToRoot = [
+  contents = [
     pkgs.dockerTools.caCertificates
     feed-repeat
   ];
 
-  runAsRoot = ''
-    #!${pkgs.runtimeShell}
-    mkdir -p /var/lib/feed-repeat /var/cache/feed-repeat /etc/feed-repeat
+  extraCommands = ''
+    mkdir -p var/lib/feed-repeat var/cache/feed-repeat etc/feed-repeat
   '';
 
   config = {
