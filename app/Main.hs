@@ -18,6 +18,8 @@ import Control.Monad.Logger
   )
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Retry qualified as Retry
+import Crypto.Hash (Digest, SHA256)
+import Crypto.Hash qualified as Crypto
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 import Data.ByteString.Lazy qualified as LBS
@@ -41,7 +43,7 @@ import Network.HTTP.Client.TLS qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Options.Applicative qualified as Opt
 import PackageInfo_feed_repeat qualified as PI
-import System.Directory (createDirectoryIfMissing, renameFile)
+import System.Directory (createDirectoryIfMissing, doesFileExist, renameFile)
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -157,16 +159,18 @@ run env =
           | env.options.validateOnly ->
               unless env.options.quiet $ do
                 logInfoIO $ "Config valid: " <> show (length validated) <> " tasks"
-          | otherwise -> forM_ validated $ \task -> do
-              res <-
-                runStdoutLoggingT
-                  . filterLogger enableLogging
-                  . flip runReaderT env
-                  . runExceptT
-                  $ runTask task
-              case res of
-                Left err -> logErrorIO $ show err
-                Right _ -> return ()
+          | otherwise -> do
+              migrateCacheFiles env.options.cacheDir validated
+              forM_ validated $ \task -> do
+                res <-
+                  runStdoutLoggingT
+                    . filterLogger enableLogging
+                    . flip runReaderT env
+                    . runExceptT
+                    $ runTask task
+                case res of
+                  Left err -> logErrorIO $ show err
+                  Right _ -> return ()
   where
     enableLogging _ level
       | env.options.quiet = level >= LevelWarn
@@ -184,6 +188,16 @@ validateTasks tasks = do
       forM_ (nub duplicates) (logErrorIO . ("  " <>))
       return Nothing
     else return $ Just tasks
+
+migrateCacheFiles :: FilePath -> [FeedTask] -> IO ()
+migrateCacheFiles cacheDir tasks = forM_ tasks $ \task -> do
+  let oldPath = cacheDir </> show (hash task.sourceFeedUrl) <> ".atom"
+      newPath = cacheDir </> cacheFileName task.sourceFeedUrl
+  oldExists <- doesFileExist oldPath
+  newExists <- doesFileExist newPath
+  when (oldExists && not newExists) $ do
+    renameFile oldPath newPath
+    logInfoIO $ "Migrated cache: " <> oldPath <> " -> " <> newPath
 
 runTask :: FeedTask -> App ()
 runTask task = do
@@ -267,10 +281,15 @@ processSourceFeed task mOutputFeed sourceFeed = do
       logDebug $ "Wrote to: " <> outputPath
       logInfo $ "Processed " <> show url <> " successfully"
 
+cacheFileName :: URL -> String
+cacheFileName url =
+  let d :: Digest SHA256 = Crypto.hash $ TE.encodeUtf8 $ T.pack url.toString
+   in show d <> ".atom"
+
 fetchCacheFeed :: Bool -> URL -> UTCTime -> App Atom.Feed
 fetchCacheFeed saveSourceFeedEntries url feedUpdated = do
   env <- ask
-  let cacheFilePath = env.options.cacheDir </> show (hash url) <> ".atom"
+  let cacheFilePath = env.options.cacheDir </> cacheFileName url
   freshOrCachedFeed <-
     (Right <$> fetchFeed url feedUpdated) `catchError` \err -> do
       case err of

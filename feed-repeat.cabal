@@ -75,6 +75,7 @@ executable feed-repeat
   hs-source-dirs: app
   other-modules:  PackageInfo_feed_repeat
   build-depends:
+    , crypton
     , feed
     , feed-repeat
     , http-client
