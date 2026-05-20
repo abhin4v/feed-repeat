@@ -116,6 +116,8 @@ in
       description = ''
         The path component base URL of the feed-repeat server. This is
         used only if Nginx is enabled using the `enableNginx` option.
+        Must end with a trailing slash (e.g. "/" or "/feeds/") to avoid
+        nginx alias path-traversal pitfalls.
       '';
     };
 
@@ -132,6 +134,17 @@ in
         assertion =
           if cfg.enableNginx then cfg.virtualHost != null && cfg.virtualHostPath != null else true;
         message = "Nginx is enabled but the virtualHost and/or virtualHostPath options are not set.";
+      }
+      {
+        assertion =
+          if cfg.enableNginx && cfg.virtualHostPath != null then
+            lib.hasSuffix "/" cfg.virtualHostPath
+          else
+            true;
+        message = ''
+          services.feed-repeat.virtualHostPath ("${toString cfg.virtualHostPath}") must end
+          with a trailing slash (e.g. "/" or "/feeds/").
+        '';
       }
       {
         assertion = !(cfg.verbose && cfg.quiet);
@@ -262,10 +275,18 @@ in
                 application/atom+xml atom;
               }
               default_type application/octet-stream;
+              autoindex off;
               expires 6h;
               add_header Cache-Control "public, max-age=21600";
               add_header Strict-Transport-Security "max-age=31536000" always;
               add_header X-Content-Type-Options "nosniff" always;
+
+              # Deny access to dotfiles (e.g. .git, .htaccess) if any ever appear
+              # in the output directory.
+              location ~ /\. {
+                deny all;
+                return 404;
+              }
             '';
           };
         };
