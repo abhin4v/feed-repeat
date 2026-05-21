@@ -19,9 +19,16 @@ pkgs.dockerTools.buildLayeredImage {
 
   extraCommands = ''
     mkdir -p var/lib/feed-repeat var/cache/feed-repeat etc/feed-repeat
+    echo 'feed-repeat:x:1000:1000::/var/lib/feed-repeat:/sbin/nologin' > etc/passwd
+    echo 'feed-repeat:x:1000:' > etc/group
   '';
+  fakeRootCommands = ''
+    chown -R 1000:1000 var/lib/feed-repeat var/cache/feed-repeat
+  '';
+  enableFakechroot = true;
 
   config = {
+    User = "1000:1000";
     Cmd = [
       "/bin/feed-repeat"
       "--config"
