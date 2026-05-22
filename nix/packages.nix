@@ -60,7 +60,12 @@ let
           enableParallelBuilding = true;
         }))
       ]
-      ++ lib.optional (!(usingOr "optimise" true)) hlib.disableOptimization
+      ++ (
+        if (usingOr "optimise" static) then
+          [ (hlib.appendConfigureFlags [ "-O2" ]) ]
+        else
+          [ hlib.disableOptimization ]
+      )
       ++ lib.optional (usingOr "profiling" false) hlib.enableExecutableProfiling
       ++ lib.optional (usingOr "benchmark" false) hlib.doBenchmark
       ++ lib.optional pkgs.stdenv.isAarch64 (
