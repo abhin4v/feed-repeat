@@ -168,13 +168,6 @@ let
   scripts = import ./scripts.nix { inherit pkgs; };
 in
 {
-  inherit
-    conf
-    ourHaskell
-    ghc
-    confPkg
-    ; # TODO: remove
-
   bin = (if static then util.compressExes else (x: x)) ourHaskell.feed-repeat;
 
   shell = pkgs.buildEnv {

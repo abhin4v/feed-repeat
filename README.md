@@ -226,8 +226,6 @@ Since the container runs once and exits, you need to schedule it externally:
 
 - Docker Compose with Ofelia: Use Docker Compose with the Ofelia scheduler to run the container on a schedule:
     ```yaml
-    version: '3.8'
-    
     services:
       feed-repeat:
         image: feed-repeat:latest
@@ -283,18 +281,18 @@ Create a YAML file with a list of feed tasks:
 
 ```yaml
 - sourceFeedUrl: "https://example.com/feed.atom"
-   outputFilename: "unique-id-1"
-   saveSourceFeedEntries: true
-   repeatedEntryCount: 3
-   minimumEntryAgeDays: 7
-   maxEntryCountPerDomain: 1
-   selectionAlpha: 0.9
+  outputFilename: "unique-id-1"
+  saveSourceFeedEntries: true
+  repeatedEntryCount: 3
+  minimumEntryAgeDays: 7
+  maxEntryCountPerDomain: 1
+  selectionAlpha: 0.9
 
 - sourceFeedUrl: "https://another-site.com/rss.xml"
-   outputFilename: "unique-id-2"
-   saveSourceFeedEntries: false
-   repeatedEntryCount: 1
-   minimumEntryAgeDays: 14
+  outputFilename: "unique-id-2"
+  saveSourceFeedEntries: false
+  repeatedEntryCount: 1
+  minimumEntryAgeDays: 14
 ```
 
 See `config.yaml` for all available parameters and their meanings.
@@ -308,3 +306,5 @@ MIT
 I consider this is a done software. Maybe some day when [JSONFeed](https://www.jsonfeed.org/) gets popular, I'd consider adding support for it. Other than that, I don't foresee adding any new features. I'll keep doing bugfixes, security fixes and dependency upgrades.
 
 Please feel free to create an issue if you find a bug. I'm not inclined to accept pull requests unless there is a very compelling reason.
+
+Disclaimer: This is a personal project. The views, code, and opinions expressed here are my own and do not represent those of my current or past employers.
