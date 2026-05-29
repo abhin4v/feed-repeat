@@ -33,7 +33,6 @@ tools = [
 disable_plugins = [
   "fourmolu",
   "stan",
-  "hlint",
 ]
 
 # These files and directories will be excluded from the nix build,
