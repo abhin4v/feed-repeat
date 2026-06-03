@@ -45,8 +45,7 @@ The easiest way to install Haskell is via [GHCup](https://www.haskell.org/ghcup/
 First, clone the repository and navigate into it:
 
 ```bash
-git clone https://code.abhinavsarkar.net/abhin4v/feed-repeat.git
-# or git clone https://github.com/abhin4v/feed-repeat.git
+git clone https://github.com/abhin4v/feed-repeat.git
 cd feed-repeat
 ```
 

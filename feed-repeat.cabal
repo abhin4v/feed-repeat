@@ -17,8 +17,8 @@ license:            MIT
 license-file:       LICENSE
 build-type:         Simple
 category:           Web
-homepage:           https://code.abhinavsarkar.net/abhin4v/feed-repeat
-bug-reports:        https://code.abhinavsarkar.net/abhin4v/feed-repeat/issues
+homepage:           https://github.com/abhin4v/feed-repeat
+bug-reports:        https://github.com/abhin4v/feed-repeat/issues
 extra-source-files: README.md
 
 common common-config
