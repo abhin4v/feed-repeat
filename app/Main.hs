@@ -2,7 +2,7 @@ module Main where
 
 import Control.Arrow ((>>>))
 import Control.Exception (IOException, displayException, throwIO, toException, try)
-import Control.Monad (forM_, unless, void, when, (>=>))
+import Control.Monad (forM, forM_, unless, void, when, (>=>))
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Logger
@@ -27,7 +27,7 @@ import Data.Either (isRight)
 import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
 import Data.List (nub, (\\))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Lazy qualified as TL
@@ -112,7 +112,16 @@ main = do
             <> Opt.header ("feed-repeat version " <> showVersion PI.version)
             <> Opt.footer (PI.homepage <> " © " <> PI.copyright)
         )
-  man <- HTTP.newTlsManager
+  let manSettings =
+        HTTP.tlsManagerSettings
+          { HTTP.managerModifyRequest = \request -> do
+              let url = show $ HTTP.getUri request
+              checkPublicUrl url >>= \case
+                True -> return request
+                False -> throwIO $ HTTP.InvalidUrlException url "Request to private URL"
+          }
+  man <- HTTP.newTlsManagerWith manSettings
+
   let env = Env options man
   createDirs [options.outputDir, options.cacheDir]
   run env
@@ -181,6 +190,13 @@ run env =
 
 validateTasks :: [FeedTask] -> IO (Maybe [FeedTask])
 validateTasks tasks = do
+  tasks <- fmap catMaybes . forM tasks $ \task ->
+    checkPublicUrl task.sourceFeedUrl.toString >>= \case
+      True -> return $ Just task
+      False -> do
+        logErrorIO $ "Private source feed URL found: " <> task.sourceFeedUrl.toString
+        return Nothing
+
   -- Check for duplicate output filenames
   let outputFilenames = map outputFilename tasks
   let duplicates = outputFilenames \\ nub outputFilenames
@@ -189,7 +205,7 @@ validateTasks tasks = do
       logErrorIO "Duplicate output filenames found:"
       forM_ (nub duplicates) (logErrorIO . ("  " <>))
       return Nothing
-    else return $ Just tasks
+    else return $ if null tasks then Nothing else Just tasks
 
 runTask :: FeedTask -> App ()
 runTask task = do

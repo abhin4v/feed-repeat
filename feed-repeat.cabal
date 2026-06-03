@@ -63,6 +63,7 @@ library
     , feed
     , http-client
     , mtl
+    , network
     , network-uri
     , random
     , scientific   ^>=0.3.8.0

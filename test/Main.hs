@@ -772,6 +772,94 @@ main = hspec $ do
       length repeated `shouldBe` 0
       sort (map Atom.entryId new) `shouldBe` ["new1", "new2", "new3"]
 
+  describe "SSRF protection" $ do
+    describe "isPrivateIPv4 (IP-level check)" $ do
+      it "rejects loopback 127.0.0.0/8" $ do
+        isPrivateIPv4 (127, 0, 0, 1) `shouldBe` True
+        isPrivateIPv4 (127, 255, 255, 255) `shouldBe` True
+
+      it "rejects private 10.0.0.0/8" $ do
+        isPrivateIPv4 (10, 0, 0, 1) `shouldBe` True
+        isPrivateIPv4 (10, 255, 255, 255) `shouldBe` True
+
+      it "rejects link-local 169.254.0.0/16" $ do
+        isPrivateIPv4 (169, 254, 169, 254) `shouldBe` True
+
+      it "rejects private 192.168.0.0/16" $ do
+        isPrivateIPv4 (192, 168, 0, 1) `shouldBe` True
+        isPrivateIPv4 (192, 168, 255, 255) `shouldBe` True
+
+      it "rejects private 172.16.0.0/12 range" $ do
+        isPrivateIPv4 (172, 16, 0, 1) `shouldBe` True
+        isPrivateIPv4 (172, 31, 0, 1) `shouldBe` True
+
+      it "allows addresses adjacent to 172.16.0.0/12" $ do
+        isPrivateIPv4 (172, 15, 0, 1) `shouldBe` False
+        isPrivateIPv4 (172, 32, 0, 1) `shouldBe` False
+
+      it "rejects CGNAT 100.64.0.0/10" $ do
+        isPrivateIPv4 (100, 64, 0, 1) `shouldBe` True
+        isPrivateIPv4 (100, 127, 0, 1) `shouldBe` True
+
+      it "allows addresses outside CGNAT range" $ do
+        isPrivateIPv4 (100, 63, 0, 1) `shouldBe` False
+        isPrivateIPv4 (100, 128, 0, 1) `shouldBe` False
+
+      it "rejects multicast 224.0.0.0/4" $ do
+        isPrivateIPv4 (224, 0, 0, 1) `shouldBe` True
+        isPrivateIPv4 (239, 255, 255, 255) `shouldBe` True
+        isPrivateIPv4 (255, 255, 255, 255) `shouldBe` True
+
+      it "rejects benchmark 198.18.0.0/15" $ do
+        isPrivateIPv4 (198, 18, 0, 1) `shouldBe` True
+        isPrivateIPv4 (198, 19, 255, 255) `shouldBe` True
+
+      it "rejects 192.0.0.0/24 (cloud provider IPs)" $ do
+        isPrivateIPv4 (192, 0, 0, 192) `shouldBe` True
+        isPrivateIPv4 (192, 0, 0, 1) `shouldBe` True
+        isPrivateIPv4 (192, 0, 0, 255) `shouldBe` True
+
+      it "rejects 0.0.0.0/8" $ do
+        isPrivateIPv4 (0, 0, 0, 0) `shouldBe` True
+
+    describe "isPrivateIPv6" $ do
+      it "rejects ::/32 (unspecified, loopback, IPv4-compat, IPv4-mapped)" $ do
+        isPrivateIPv6 (0x00000000) `shouldBe` True -- w1=0 covers ::, ::1, etc.
+      it "allows 1:: (distinct from ::1)" $ do
+        isPrivateIPv6 (0x00000001) `shouldBe` False -- 1:: is public
+      it "rejects fe80::/10 (link-local)" $ do
+        isPrivateIPv6 (0xfe800000) `shouldBe` True -- fe80::
+        isPrivateIPv6 (0xfebf0000) `shouldBe` True -- febf:: (upper bound)
+      it "rejects fc00::/7 (unique local / ULA)" $ do
+        isPrivateIPv6 (0xfc000000) `shouldBe` True -- fc00::
+        isPrivateIPv6 (0xfd000000) `shouldBe` True -- fd00::
+        isPrivateIPv6 (0xfdffffff) `shouldBe` True -- fdff:ffff::
+      it "rejects ff00::/8 (multicast)" $ do
+        isPrivateIPv6 (0xff000000) `shouldBe` True -- ff00::
+        isPrivateIPv6 (0xff020000) `shouldBe` True -- ff02::1 (all-nodes)
+        isPrivateIPv6 (0xffffffff) `shouldBe` True -- ffff::
+      it "rejects fec0::/10 (site-local deprecated)" $ do
+        isPrivateIPv6 (0xfec00000) `shouldBe` True -- fec0::
+        isPrivateIPv6 (0xfee00000) `shouldBe` True -- fee0:: (inside fec0::/10 range)
+      it "accepts public IPv6 ranges" $ do
+        isPrivateIPv6 (0x20010db8) `shouldBe` False -- 2001:db8:: (documentation)
+        isPrivateIPv6 (0x20010000) `shouldBe` False -- 2001:: (Teredo)
+        isPrivateIPv6 (0x24040000) `shouldBe` False -- 2404:: (public)
+        isPrivateIPv6 (0xfe000000) `shouldBe` False -- fe00:: (unassigned, not private)
+        --
+    describe "checkPublicUrl (DNS-resolving check)" $ do
+      it "rejects localhost" $ do
+        result <- checkPublicUrl "http://localhost/feed"
+        result `shouldBe` False
+
+      it "rejects 127.0.0.1 via DNS resolution" $ do
+        result <- checkPublicUrl "http://127.0.0.1/feed"
+        result `shouldBe` False
+
+      it "accepts public IP literal (no DNS required)" $ do
+        result <- checkPublicUrl "http://8.8.8.8/feed"
+        result `shouldBe` True
+
   describe "selectEntries distribution" $ do
     let validYears = concat $ replicate 22 [1980 .. 2024]
         entries =
