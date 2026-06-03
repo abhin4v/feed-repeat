@@ -36,6 +36,11 @@
   # Higher values make older entries much more likely to be selected.
   # Set to 0 for uniform random selection regardless of age.
 
+  passthroughNewEntries: true
+  # Whether to passthrough new entries in the input feed. (optional, default: false)
+  # Set to true to get repeated as well as new entries in the output feed.
+  # Set to false to get only repeated entries in the output feed.
+
 - sourceFeedUrl: "https://abhinavsarkar.net/blogroll/feed.atom"
   outputFilename: "z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4"
   saveSourceFeedEntries: true

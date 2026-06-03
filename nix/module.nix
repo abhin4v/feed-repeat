@@ -73,6 +73,12 @@ in
               description = "Controls how strongly the weighted selection favors older entries. Higher values make older entries much more likely to be selected. Set to 0 for uniform random selection.";
               example = 1.5;
             };
+
+            passthroughNewEntries = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Whether to pass through new entries (newer than the last output feed update) alongside repeated entries.";
+            };
           };
         }
       );

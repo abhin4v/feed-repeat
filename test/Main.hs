@@ -5,6 +5,8 @@ import Control.Monad.Except (runExceptT)
 import Data.List (sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text qualified as T
+import Data.Time (UTCTime)
+import Data.Time.Format.ISO8601 (iso8601ParseM)
 import Lib
 import Test.Hspec
 import Test.QuickCheck hiding (NonNegative)
@@ -23,7 +25,8 @@ mkTask count minAgeDays maxPerDomain =
       minimumEntryAgeDays = newNonNegative' minAgeDays,
       minRunGapDays = newNonNegative' 1,
       maxEntryCountPerDomain = newNonNegative' <$> maxPerDomain,
-      selectionAlpha = newNonNegative' 1
+      selectionAlpha = newNonNegative' 1,
+      passthroughNewEntries = False
     }
 
 newNonNegative' :: (Ord a, Num a) => a -> NonNegative a
@@ -34,6 +37,12 @@ newURL' = fromMaybe (error "Impossible") . newURL
 
 testFeedURL :: URL
 testFeedURL = newURL' "http://example.com/feed"
+
+parseUTC :: String -> UTCTime
+parseUTC = fromMaybe (error "Impossible") . iso8601ParseM
+
+epoch :: UTCTime
+epoch = parseUTC "1970-01-01T00:00:00Z"
 
 main :: IO ()
 main = hspec $ do
@@ -245,8 +254,9 @@ main = hspec $ do
 
   describe "selectEntries" $ do
     it "returns empty list when entries list is empty" $ do
-      result <- selectEntries (mkTask 0 3 Nothing) []
-      length result `shouldBe` 0
+      (repeated, new) <- selectEntries (mkTask 0 3 Nothing) epoch []
+      length repeated `shouldBe` 0
+      length new `shouldBe` 0
 
     it "returns at most n entries" $ do
       let entry1 =
@@ -262,8 +272,8 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://example.com/3"]
               }
           entries = [entry1, entry2, entry3]
-      result <- selectEntries (mkTask 1 365 Nothing) entries
-      length result `shouldSatisfy` (<= 1)
+      (repeated, _) <- selectEntries (mkTask 1 365 Nothing) epoch entries
+      length repeated `shouldSatisfy` (<= 1)
 
     it "filters out entries newer than minimum age" $ do
       let oldEntry =
@@ -275,10 +285,10 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://example.com/new"]
               }
           entries = [oldEntry, newEntry]
-      result <- selectEntries (mkTask 1 3 Nothing) entries
-      case result of
+      (repeated, _) <- selectEntries (mkTask 1 3 Nothing) epoch entries
+      case repeated of
         [entry] -> Atom.entryId entry `shouldBe` "id1"
-        _ -> expectationFailure $ "Expected exactly 1 entry, got " <> show (length result)
+        _ -> expectationFailure $ "Expected exactly 1 entry, got " <> show (length repeated)
 
     it "limits entries per domain when maxEntryCountPerDomain is set" $ do
       let entry1 =
@@ -294,10 +304,10 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://other.com/1"]
               }
           entries = [entry1, entry2, entry3]
-      result <- selectEntries (mkTask 3 0 (Just 1)) entries
-      length result `shouldBe` 2
+      (repeated, _) <- selectEntries (mkTask 3 0 (Just 1)) epoch entries
+      length repeated `shouldBe` 2
       let domains =
-            mapMaybe (listToMaybe . Atom.entryLinks >=> extractDomain . Atom.linkHref) result
+            mapMaybe (listToMaybe . Atom.entryLinks >=> extractDomain . Atom.linkHref) repeated
       length domains `shouldBe` 2
       sort domains `shouldBe` ["example.com", "other.com"]
 
@@ -694,6 +704,74 @@ main = hspec $ do
                   _ -> expectationFailure "No alternate link found"
           _ -> expectationFailure "No entries found"
 
+  describe "selectEntries passthroughNewEntries" $ do
+    let mkEntry eid published =
+          (Atom.nullEntry eid (Atom.TextString eid) published)
+            { Atom.entryLinks = [Atom.nullLink $ "http://example.com/" <> eid],
+              Atom.entryPublished = Just published
+            }
+
+    it "includes entries newer than outputFeedUpdated when enabled" $ do
+      let oldEntry = mkEntry "old" "2020-01-01T10:00:00Z"
+          newEntry = mkEntry "new" "2025-11-25T10:00:00Z"
+          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
+          task = (mkTask 1 365 Nothing) {passthroughNewEntries = True}
+      (_, new) <- selectEntries task outputUpdated [oldEntry, newEntry]
+      map Atom.entryId new `shouldSatisfy` elem "new"
+
+    it "does not passthrough entries older than outputFeedUpdated when enabled" $ do
+      let oldEntry = mkEntry "old" "2024-01-01T10:00:00Z"
+          task = (mkTask 0 0 Nothing) {passthroughNewEntries = True}
+          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
+      (repeated, new) <- selectEntries task outputUpdated [oldEntry]
+      length (repeated <> new) `shouldBe` 0
+
+    it "does not passthrough new entries when feature is disabled" $ do
+      let newEntry = mkEntry "new" "2025-11-25T10:00:00Z"
+          task = (mkTask 0 365 Nothing) {passthroughNewEntries = False}
+          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
+      (repeated, new) <- selectEntries task outputUpdated [newEntry]
+      length (repeated <> new) `shouldBe` 0
+
+    it "ignores entries without published date when enabled" $ do
+      let noDateEntry =
+            (Atom.nullEntry "no-date" (Atom.TextString "no-date") "2025-11-25T10:00:00Z")
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/no-date"],
+                Atom.entryPublished = Nothing
+              }
+          task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
+          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
+      (repeated, new) <- selectEntries task outputUpdated [noDateEntry]
+      length (repeated <> new) `shouldBe` 0
+
+    it "ignores entries with unparseable published date when enabled" $ do
+      let badDateEntry =
+            (Atom.nullEntry "bad-date" (Atom.TextString "bad-date") "2025-11-25T10:00:00Z")
+              { Atom.entryLinks = [Atom.nullLink "http://example.com/bad-date"],
+                Atom.entryPublished = Just "not-a-date"
+              }
+          task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
+          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
+      (repeated, new) <- selectEntries task outputUpdated [badDateEntry]
+      length (repeated <> new) `shouldBe` 0
+
+    it "deduplicates entries appearing in both passthrough and repeated selection" $ do
+      let entry = mkEntry "dup" "2025-06-01T10:00:00Z"
+          task = (mkTask 1 0 Nothing) {passthroughNewEntries = True}
+          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
+      (repeated, new) <- selectEntries task outputUpdated [entry]
+      length (repeated <> new) `shouldBe` 1
+
+    it "passes through multiple new entries when enabled" $ do
+      let new1 = mkEntry "new1" "2025-11-25T10:00:00Z"
+          new2 = mkEntry "new2" "2025-11-26T10:00:00Z"
+          new3 = mkEntry "new3" "2025-11-27T10:00:00Z"
+          task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
+          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
+      (repeated, new) <- selectEntries task outputUpdated [new1, new2, new3]
+      length repeated `shouldBe` 0
+      sort (map Atom.entryId new) `shouldBe` ["new1", "new2", "new3"]
+
   describe "selectEntries distribution" $ do
     let validYears = concat $ replicate 22 [1980 .. 2024]
         entries =
@@ -717,7 +795,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ selectEntries task entries
+            selections <- replicateM 10 $ fst <$> selectEntries task epoch entries
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 
@@ -740,7 +818,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ selectEntries (task {selectionAlpha = newNonNegative' 0}) entries
+            selections <- replicateM 10 $ fst <$> selectEntries (task {selectionAlpha = newNonNegative' 0}) epoch entries
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 

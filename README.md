@@ -287,6 +287,7 @@ Create a YAML file with a list of feed tasks:
   minimumEntryAgeDays: 7
   maxEntryCountPerDomain: 1
   selectionAlpha: 0.9
+  passthroughNewEntries: true
 
 - sourceFeedUrl: "https://another-site.com/rss.xml"
   outputFilename: "unique-id-2"

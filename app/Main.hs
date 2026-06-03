@@ -221,18 +221,20 @@ runTask task = do
       logWarn $ "Failed to read output feed: " <> show err
       return Nothing
   let ancientTime = UTCTime (Time.fromGregorian 2000 1 1) 0
-      outputFeedUpdated = case outputFeed of
-        Nothing -> ancientTime
-        Just outputFeed -> fromMaybe ancientTime $ parseDate $ Atom.feedUpdated outputFeed
+      (outputFeedUpdatedAncient, outputFeedUpdatedNow) = case outputFeed of
+        Nothing -> (ancientTime, now)
+        Just outputFeed ->
+          let updated = parseDate $ Atom.feedUpdated outputFeed
+           in (fromMaybe ancientTime updated, fromMaybe now updated)
   let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
-  if Time.diffUTCTime now outputFeedUpdated < minRunGapSeconds
+  if Time.diffUTCTime now outputFeedUpdatedAncient < minRunGapSeconds
     then logInfo $ "Skipping run for URL: " <> show url
-    else
-      fetchCacheFeed task.saveSourceFeedEntries task.sourceFeedUrl outputFeedUpdated
-        >>= processSourceFeed task outputFeed
+    else do
+      fetchCacheFeed task.saveSourceFeedEntries task.sourceFeedUrl outputFeedUpdatedAncient
+        >>= processSourceFeed task outputFeed outputFeedUpdatedNow now
 
-processSourceFeed :: FeedTask -> Maybe Atom.Feed -> Atom.Feed -> App ()
-processSourceFeed task mOutputFeed sourceFeed = do
+processSourceFeed :: FeedTask -> Maybe Atom.Feed -> UTCTime -> UTCTime -> Atom.Feed -> App ()
+processSourceFeed task mOutputFeed outputFeedUpdated now sourceFeed = do
   -- merge source and output feeds
   mergedFeed <- case mOutputFeed of
     Nothing -> return sourceFeed
@@ -242,26 +244,23 @@ processSourceFeed task mOutputFeed sourceFeed = do
   logDebug $ "Merged feed has " <> show (length allEntries) <> " entries"
 
   -- select entries
-  now <- liftIO Time.getCurrentTime
   let timestamp = T.pack $ iso8601Show now
-  selectedEntries <-
-    selectEntries task allEntries
-      >>= traverse
-        ( \e -> do
-            entryId <- mkUuidUrn
-            return e {Atom.entryId = entryId, Atom.entryUpdated = timestamp}
-        )
-  if null selectedEntries
-    then logWarn "Selected no entries for repetition"
+  (selectedEntries', newEntries') <- selectEntries task outputFeedUpdated allEntries
+  [selectedEntries, newEntries] <- traverse (traverse (resetEntryId timestamp)) [selectedEntries', newEntries']
+
+  if null selectedEntries && null newEntries
+    then logWarn "Selected no new entries or entries for repetition"
     else do
       logDebug $ "Selected " <> show (length selectedEntries) <> " entries for repetition"
+      logDebug $ "Got " <> show (length newEntries) <> " new entries"
 
       -- merge entries
       let outputFeedEntries = maybe [] Atom.feedEntries mOutputFeed
-      let combinedEntries = selectedEntries <> outputFeedEntries
+      let combinedEntries = newEntries <> selectedEntries <> outputFeedEntries
       logDebug $
         "Combined entries: "
-          <> (show (length selectedEntries) <> " new + ")
+          <> (show (length newEntries) <> " new + ")
+          <> (show (length selectedEntries) <> " repeated + ")
           <> (show (length outputFeedEntries) <> " existing = ")
           <> show (length combinedEntries)
 
@@ -281,6 +280,10 @@ processSourceFeed task mOutputFeed sourceFeed = do
       writeFile outputPath content
       logDebug $ "Wrote to: " <> outputPath
       logInfo $ "Processed " <> show url <> " successfully"
+  where
+    resetEntryId timestamp entry = do
+      entryId <- mkUuidUrn
+      return entry {Atom.entryId = entryId, Atom.entryUpdated = timestamp}
 
 cacheFileName :: URL -> String
 cacheFileName url =

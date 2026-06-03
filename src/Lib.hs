@@ -31,6 +31,7 @@ import Data.Aeson qualified as Aeson
 import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Function ((&))
 import Data.HashMap.Strict qualified as HM
+import Data.HashSet qualified as HS
 import Data.Hashable (Hashable)
 import Data.List (sortBy)
 import Data.List.Extra (nubOrdOn)
@@ -113,7 +114,8 @@ data FeedTask = FeedTask
     minimumEntryAgeDays :: NonNegative Int,
     minRunGapDays :: NonNegative Int,
     maxEntryCountPerDomain :: Maybe (NonNegative Int),
-    selectionAlpha :: NonNegative Double
+    selectionAlpha :: NonNegative Double,
+    passthroughNewEntries :: Bool
   }
   deriving (Show, Eq, Generic)
 
@@ -128,6 +130,7 @@ instance Aeson.FromJSON FeedTask where
       <*> v .:? "minRunGapDays" .!= NonNegative 1
       <*> v .:? "maxEntryCountPerDomain"
       <*> v .:? "selectionAlpha" .!= NonNegative 1
+      <*> v .:? "passthroughNewEntries" .!= False
 
 data AppError
   = IOError IOException
@@ -252,13 +255,27 @@ mergeFeeds :: Atom.Feed -> Atom.Feed -> Atom.Feed
 mergeFeeds feed1 feed2 =
   let allEntries = Atom.feedEntries feed1 <> Atom.feedEntries feed2
       sortedEntries = sortBy (comparing (Down . Atom.entryUpdated)) allEntries
-      uniqueEntries = nubOrdOn (Feed.getItemLink . Feed.AtomItem) sortedEntries
+      uniqueEntries = nubOrdOn getItemLinkOrId sortedEntries
    in feed1 {Atom.feedEntries = uniqueEntries}
 
-selectEntries :: (MonadIO m) => FeedTask -> [Atom.Entry] -> m [Atom.Entry]
-selectEntries task entries = do
+selectEntries :: (MonadIO m) => FeedTask -> UTCTime -> [Atom.Entry] -> m ([Atom.Entry], [Atom.Entry])
+selectEntries task outputFeedUpdated entries = do
+  let newEntries =
+        if task.passthroughNewEntries
+          then
+            [ entry
+            | entry <- entries,
+              Just pubDate <- [Atom.entryPublished entry],
+              Just pubTime <- [parseDate pubDate],
+              pubTime >= outputFeedUpdated
+            ]
+          else []
+      newEntryLinks = HS.fromList $ map getItemLinkOrId newEntries
+
   now <- liftIO getCurrentTime
-  select now $ filter (isOldEnough now) entries
+  fmap ((,newEntries) . filter (not . (`HS.member` newEntryLinks) . getItemLinkOrId))
+    . select now
+    $ filter (isOldEnough now) entries
   where
     minAgeSeconds = fromIntegral task.minimumEntryAgeDays.toNum * nominalDay
 
@@ -323,6 +340,11 @@ parseDate ds =
           "%a, %d %B %Y %H:%M:%S %EZ" -- Mon, 08 December 2025 11:07:49 +00:00
         ]
    in asum $ map (\fmt -> parseTimeM True defaultTimeLocale fmt $ T.unpack ds) formats
+
+getItemLinkOrId :: Atom.Entry -> T.Text
+getItemLinkOrId entry =
+  let link = Feed.getItemLink $ Feed.AtomItem entry
+   in fromMaybe (Atom.entryId entry) link
 
 tryOrThrow :: (MonadIO m, Exception e1, MonadError e2 m) => (e1 -> e2) -> IO c -> m c
 tryOrThrow mkErr = try >>> liftIO >=> mapLeft mkErr >>> liftEither
