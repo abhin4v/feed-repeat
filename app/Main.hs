@@ -26,7 +26,6 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Either (isRight)
 import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
-import Data.Hashable (hash)
 import Data.List (nub, (\\))
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
@@ -43,7 +42,7 @@ import Network.HTTP.Client.TLS qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Options.Applicative qualified as Opt
 import PackageInfo_feed_repeat qualified as PI
-import System.Directory (createDirectoryIfMissing, doesFileExist, renameFile)
+import System.Directory (createDirectoryIfMissing, renameFile)
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -164,7 +163,6 @@ run env =
               unless env.options.quiet $ do
                 logInfoIO $ "Config valid: " <> show (length validated) <> " tasks"
           | otherwise -> do
-              migrateCacheFiles env.options.cacheDir validated
               forM_ validated $ \task -> do
                 res <-
                   runStdoutLoggingT
@@ -192,16 +190,6 @@ validateTasks tasks = do
       forM_ (nub duplicates) (logErrorIO . ("  " <>))
       return Nothing
     else return $ Just tasks
-
-migrateCacheFiles :: FilePath -> [FeedTask] -> IO ()
-migrateCacheFiles cacheDir tasks = forM_ tasks $ \task -> do
-  let oldPath = cacheDir </> show (hash task.sourceFeedUrl) <> ".atom"
-      newPath = cacheDir </> cacheFileName task.sourceFeedUrl
-  oldExists <- doesFileExist oldPath
-  newExists <- doesFileExist newPath
-  when (oldExists && not newExists) $ do
-    renameFile oldPath newPath
-    logInfoIO $ "Migrated cache: " <> oldPath <> " -> " <> newPath
 
 runTask :: FeedTask -> App ()
 runTask task = do
