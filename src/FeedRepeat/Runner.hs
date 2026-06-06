@@ -289,7 +289,7 @@ fetchFeed url modTime = do
 
     throwHttpErrors req resp = do
       let status = HTTP.responseStatus resp
-      unless (HTTP.statusIsSuccessful status || HTTP.statusIsRedirection status) $ do
+      unless (HTTP.statusIsSuccessful status || HTTP.statusIsRedirection status || status == HTTP.status429) $ do
         let chunk = LBS.take 1024 $ HTTP.responseBody resp
         let resp' = void resp
         let ex = HTTP.StatusCodeException resp' $ LBS.toStrict chunk
