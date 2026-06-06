@@ -44,6 +44,9 @@ parseUTC = fromMaybe (error "Impossible") . iso8601ParseM
 epoch :: UTCTime
 epoch = parseUTC "1970-01-01T00:00:00Z"
 
+farFutureNow :: UTCTime
+farFutureNow = parseUTC "2025-06-01T00:00:00Z"
+
 main :: IO ()
 main = hspec $ do
   describe "parseDate" $ do
@@ -254,7 +257,7 @@ main = hspec $ do
 
   describe "selectEntries" $ do
     it "returns empty list when entries list is empty" $ do
-      (repeated, new) <- selectEntries (mkTask 0 3 Nothing) epoch []
+      (repeated, new) <- selectEntries (mkTask 0 3 Nothing) epoch farFutureNow []
       length repeated `shouldBe` 0
       length new `shouldBe` 0
 
@@ -272,7 +275,7 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://example.com/3"]
               }
           entries = [entry1, entry2, entry3]
-      (repeated, _) <- selectEntries (mkTask 1 365 Nothing) epoch entries
+      (repeated, _) <- selectEntries (mkTask 1 365 Nothing) epoch farFutureNow entries
       length repeated `shouldSatisfy` (<= 1)
 
     it "filters out entries newer than minimum age" $ do
@@ -285,7 +288,7 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://example.com/new"]
               }
           entries = [oldEntry, newEntry]
-      (repeated, _) <- selectEntries (mkTask 1 3 Nothing) epoch entries
+      (repeated, _) <- selectEntries (mkTask 1 3 Nothing) epoch farFutureNow entries
       case repeated of
         [entry] -> Atom.entryId entry `shouldBe` "id1"
         _ -> expectationFailure $ "Expected exactly 1 entry, got " <> show (length repeated)
@@ -304,7 +307,7 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://other.com/1"]
               }
           entries = [entry1, entry2, entry3]
-      (repeated, _) <- selectEntries (mkTask 3 0 (Just 1)) epoch entries
+      (repeated, _) <- selectEntries (mkTask 3 0 (Just 1)) epoch farFutureNow entries
       length repeated `shouldBe` 2
       let domains =
             mapMaybe (listToMaybe . Atom.entryLinks >=> extractDomain . Atom.linkHref) repeated
@@ -318,7 +321,7 @@ main = hspec $ do
             (Atom.nullFeed "preserved-id" (Atom.TextString "Test") "2025-11-22T10:00:00Z")
               { Atom.feedEntries = [entry]
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.AtomFeed atomFeed)
       case result of
         Left _ -> expectationFailure "feedToAtom failed"
         Right feed -> do
@@ -327,7 +330,7 @@ main = hspec $ do
 
     it "preserves feed title when converting Atom" $ do
       let atomFeed = Atom.nullFeed "test-id" (Atom.TextString "My Feed Title") "2025-11-22T10:00:00Z"
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.AtomFeed atomFeed)
       case result of
         Left _ -> expectationFailure "feedToAtom failed"
         Right feed -> case Atom.feedTitle feed of
@@ -341,7 +344,7 @@ main = hspec $ do
             (Atom.nullFeed "test-id" (Atom.TextString "Test") "2025-11-22T10:00:00Z")
               { Atom.feedEntries = [entry1, entry2]
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.AtomFeed atomFeed)
       case result of
         Left _ -> expectationFailure "feedToAtom failed"
         Right feed -> length (Atom.feedEntries feed) `shouldBe` 2
@@ -363,7 +366,7 @@ main = hspec $ do
             (RSS.nullRSS "My RSS Feed" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> case Atom.feedTitle atomFeed of
@@ -393,7 +396,7 @@ main = hspec $ do
             (RSS.nullRSS "Multi Feed" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> length (Atom.feedEntries atomFeed) `shouldBe` 2
@@ -415,7 +418,7 @@ main = hspec $ do
             (RSS.nullRSS "Dated Feed" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> case Atom.feedEntries atomFeed of
@@ -437,7 +440,7 @@ main = hspec $ do
             (RSS.nullRSS "Test Feed" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> case Atom.feedEntries atomFeed of
@@ -462,7 +465,7 @@ main = hspec $ do
             (RSS.nullRSS "Blog" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> case Atom.feedEntries atomFeed of
@@ -490,7 +493,7 @@ main = hspec $ do
             (RSS.nullRSS "News" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> case Atom.feedEntries atomFeed of
@@ -521,7 +524,7 @@ main = hspec $ do
             (RSS.nullRSS "Multi Feed" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> do
@@ -556,7 +559,7 @@ main = hspec $ do
             (RSS.nullRSS "My Blog" feedLink)
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed ->
@@ -577,7 +580,7 @@ main = hspec $ do
             (RSS.nullRSS "Dated Feed" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom testFeedURL (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow testFeedURL (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> Atom.feedUpdated atomFeed `shouldBe` "2025-11-20T15:45:00Z"
@@ -598,70 +601,70 @@ main = hspec $ do
 
     it "preserves absolute http links" $ do
       let atomFeed = mkAtomFeedWithEntryLink "http://other.com/article"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "http://other.com/article"
 
     it "preserves absolute https links" $ do
       let atomFeed = mkAtomFeedWithEntryLink "https://other.com/article"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "https://other.com/article"
 
     it "resolves relative links against feed URL" $ do
       let atomFeed = mkAtomFeedWithEntryLink "/posts/my-article"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "https://example.com/posts/my-article"
 
     it "resolves relative links without leading slash" $ do
       let atomFeed = mkAtomFeedWithEntryLink "posts/my-article"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "https://example.com/blog/posts/my-article"
 
     it "resolves relative links with fragment against feed URL" $ do
       let atomFeed = mkAtomFeedWithEntryLink "/posts/my-article#some"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "https://example.com/posts/my-article#some"
 
     it "resolves relative links with query against feed URL" $ do
       let atomFeed = mkAtomFeedWithEntryLink "/posts/my-article?some"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "https://example.com/posts/my-article?some"
 
     it "resolves relative links with only fragment" $ do
       let atomFeed = mkAtomFeedWithEntryLink "#my-article"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "https://example.com/blog/#my-article"
 
     it "resolves relative links with only query" $ do
       let atomFeed = mkAtomFeedWithEntryLink "?some"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "https://example.com/blog/?some"
 
     it "percent-encodes spaces in absolute links" $ do
       let atomFeed = mkAtomFeedWithEntryLink "http://other.com/my article"
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just "http://other.com/my%20article"
 
     it "preserves empty links" $ do
       let atomFeed = mkAtomFeedWithEntryLink ""
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> getFirstEntryLink feed `shouldBe` Just ""
@@ -671,7 +674,7 @@ main = hspec $ do
             (Atom.nullFeed "feed-id" (Atom.TextString "Test") "2025-11-22T10:00:00Z")
               { Atom.feedLinks = [(Atom.nullLink "/feed.atom") {Atom.linkRel = Just $ Left "self"}]
               }
-      result <- runExceptT $ feedToAtom feedUrl (Feed.AtomFeed atomFeed)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.AtomFeed atomFeed)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right feed -> case Atom.feedLinks feed of
@@ -693,7 +696,7 @@ main = hspec $ do
             (RSS.nullRSS "Feed" "http://example.com")
               { RSS.rssChannel = channel
               }
-      result <- runExceptT $ feedToAtom feedUrl (Feed.RSSFeed rss)
+      result <- runExceptT $ feedToAtom farFutureNow feedUrl (Feed.RSSFeed rss)
       case result of
         Left err -> expectationFailure $ "feedToAtom failed: " <> show err
         Right atomFeed -> case Atom.feedEntries atomFeed of
@@ -716,21 +719,21 @@ main = hspec $ do
           newEntry = mkEntry "new" "2025-11-25T10:00:00Z"
           outputUpdated = parseUTC "2025-01-01T00:00:00Z"
           task = (mkTask 1 365 Nothing) {passthroughNewEntries = True}
-      (_, new) <- selectEntries task outputUpdated [oldEntry, newEntry]
+      (_, new) <- selectEntries task outputUpdated farFutureNow [oldEntry, newEntry]
       map Atom.entryId new `shouldSatisfy` elem "new"
 
     it "does not passthrough entries older than outputFeedUpdated when enabled" $ do
       let oldEntry = mkEntry "old" "2024-01-01T10:00:00Z"
           task = (mkTask 0 0 Nothing) {passthroughNewEntries = True}
           outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated [oldEntry]
+      (repeated, new) <- selectEntries task outputUpdated farFutureNow [oldEntry]
       length (repeated <> new) `shouldBe` 0
 
     it "does not passthrough new entries when feature is disabled" $ do
       let newEntry = mkEntry "new" "2025-11-25T10:00:00Z"
           task = (mkTask 0 365 Nothing) {passthroughNewEntries = False}
           outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated [newEntry]
+      (repeated, new) <- selectEntries task outputUpdated farFutureNow [newEntry]
       length (repeated <> new) `shouldBe` 0
 
     it "ignores entries without published date when enabled" $ do
@@ -741,7 +744,7 @@ main = hspec $ do
               }
           task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
           outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated [noDateEntry]
+      (repeated, new) <- selectEntries task outputUpdated farFutureNow [noDateEntry]
       length (repeated <> new) `shouldBe` 0
 
     it "ignores entries with unparseable published date when enabled" $ do
@@ -752,14 +755,14 @@ main = hspec $ do
               }
           task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
           outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated [badDateEntry]
+      (repeated, new) <- selectEntries task outputUpdated farFutureNow [badDateEntry]
       length (repeated <> new) `shouldBe` 0
 
     it "deduplicates entries appearing in both passthrough and repeated selection" $ do
       let entry = mkEntry "dup" "2025-06-01T10:00:00Z"
           task = (mkTask 1 0 Nothing) {passthroughNewEntries = True}
           outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated [entry]
+      (repeated, new) <- selectEntries task outputUpdated farFutureNow [entry]
       length (repeated <> new) `shouldBe` 1
 
     it "passes through multiple new entries when enabled" $ do
@@ -768,7 +771,7 @@ main = hspec $ do
           new3 = mkEntry "new3" "2025-11-27T10:00:00Z"
           task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
           outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated [new1, new2, new3]
+      (repeated, new) <- selectEntries task outputUpdated farFutureNow [new1, new2, new3]
       length repeated `shouldBe` 0
       sort (map Atom.entryId new) `shouldBe` ["new1", "new2", "new3"]
 
@@ -883,7 +886,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ fst <$> selectEntries task epoch entries
+            selections <- replicateM 10 $ fst <$> selectEntries task epoch farFutureNow entries
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 
@@ -906,7 +909,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ fst <$> selectEntries (task {selectionAlpha = newNonNegative' 0}) epoch entries
+            selections <- replicateM 10 $ fst <$> selectEntries (task {selectionAlpha = newNonNegative' 0}) epoch farFutureNow entries
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 

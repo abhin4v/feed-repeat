@@ -44,7 +44,7 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Ord (Down (..), comparing)
 import Data.Scientific qualified as Scientific
 import Data.Text qualified as T
-import Data.Time (UTCTime (..), diffUTCTime, getCurrentTime, nominalDay)
+import Data.Time (UTCTime (..), diffUTCTime, nominalDay)
 import Data.Time.Format (defaultTimeLocale, parseTimeM, rfc822DateFormat)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.UUID.V4 qualified as UUID
@@ -207,8 +207,8 @@ instance Show AppError where
     FeedNotModifiedError -> "Feed not modified"
     HTTPError err -> "HTTP error: " <> displayException err
 
-feedToAtom :: (MonadIO m, MonadError AppError m) => URL -> Feed.Feed -> m Atom.Feed
-feedToAtom feedURL (Feed.AtomFeed af@Atom.Feed {feedLinks, feedEntries}) =
+feedToAtom :: (MonadIO m, MonadError AppError m) => UTCTime -> URL -> Feed.Feed -> m Atom.Feed
+feedToAtom _ feedURL (Feed.AtomFeed af@Atom.Feed {feedLinks, feedEntries}) =
   return $
     af
       { Atom.feedLinks = map (normalizeLink feedURL) feedLinks,
@@ -217,9 +217,8 @@ feedToAtom feedURL (Feed.AtomFeed af@Atom.Feed {feedLinks, feedEntries}) =
             (\entry@Atom.Entry {entryLinks} -> entry {Atom.entryLinks = map (normalizeLink feedURL) entryLinks})
             feedEntries
       }
-feedToAtom feedURL feed = do
+feedToAtom now feedURL feed = do
   feedUuid <- mkUuidUrn
-  now <- liftIO getCurrentTime
   entries <-
     sortBy (comparing (Down . Atom.entryUpdated))
       <$> traverse (itemToAtomEntry now) (Feed.getFeedItems feed)
@@ -231,7 +230,7 @@ feedToAtom feedURL feed = do
       mFeedUpdated = updateDate <|> pubDate <|> listToMaybe (map Atom.entryUpdated entries)
 
   feedUpdated <- fromMaybeOrThrow InvalidFeedUpdatedError mFeedUpdated
-  feedToAtom feedURL . Feed.AtomFeed $
+  feedToAtom now feedURL . Feed.AtomFeed $
     (Atom.nullFeed feedId (Atom.TextString title) feedUpdated)
       { Atom.feedEntries = entries,
         Atom.feedAuthors =
@@ -314,8 +313,8 @@ mergeFeeds feed1 feed2 =
       uniqueEntries = nubOrdOn getItemLinkOrId sortedEntries
    in feed1 {Atom.feedEntries = uniqueEntries}
 
-selectEntries :: (MonadIO m) => FeedTask -> UTCTime -> [Atom.Entry] -> m ([Atom.Entry], [Atom.Entry])
-selectEntries task outputFeedUpdated entries = do
+selectEntries :: (MonadIO m) => FeedTask -> UTCTime -> UTCTime -> [Atom.Entry] -> m ([Atom.Entry], [Atom.Entry])
+selectEntries task outputFeedUpdated now entries = do
   let newEntries =
         if task.passthroughNewEntries
           then
@@ -328,7 +327,6 @@ selectEntries task outputFeedUpdated entries = do
           else []
       newEntryLinks = HS.fromList $ map getItemLinkOrId newEntries
 
-  now <- liftIO getCurrentTime
   fmap ((,newEntries) . filter (not . (`HS.member` newEntryLinks) . getItemLinkOrId))
     . select now
     $ filter (isOldEnough now) entries

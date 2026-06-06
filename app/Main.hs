@@ -4,7 +4,6 @@ import Control.Arrow ((>>>))
 import Control.Exception (IOException, displayException, throwIO, toException, try)
 import Control.Monad (forM, forM_, unless, void, when, (>=>))
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Logger
   ( LogLevel (..),
     LoggingT,
@@ -26,7 +25,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Either (isRight)
 import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
-import Data.List (nub, (\\))
+import Data.List (nub, zip4, (\\))
 import Data.List.Extra (nubOrd)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text qualified as T
@@ -83,7 +82,7 @@ data Options = Options
     quiet :: Bool
   }
 
-data Env = Env {options :: Options, httpManager :: HTTP.Manager}
+data Env = Env {options :: Options, httpManager :: HTTP.Manager, startTime :: UTCTime}
 
 type App a = ExceptT AppError (ReaderT Env (LoggingT IO)) a
 
@@ -99,8 +98,12 @@ maxBodySize = 10 * 1024 * 1024 -- 10 MB
 fileMode :: FileMode
 fileMode = foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
 
+ancientTime :: UTCTime
+ancientTime = UTCTime (Time.fromGregorian 2000 1 1) 0
+
 main :: IO ()
 main = do
+  now <- Time.getCurrentTime
   options <-
     Opt.execParser $
       Opt.info
@@ -123,7 +126,7 @@ main = do
           }
   man <- HTTP.newTlsManagerWith manSettings
 
-  let env = Env options man
+  let env = Env options man now
   createDirs [options.outputDir, options.cacheDir]
   run env
   where
@@ -173,18 +176,17 @@ run env =
           | env.options.validateOnly ->
               unless env.options.quiet $ do
                 logInfoIO $ "Config valid: " <> show (length validated) <> " tasks"
-          | otherwise -> do
-              forM_ validated $ \task -> do
-                res <-
-                  runStdoutLoggingT
-                    . filterLogger enableLogging
-                    . flip runReaderT env
-                    . runExceptT
-                    $ runTask task
-                case res of
-                  Left err -> logErrorIO $ show err
-                  Right _ -> return ()
+          | otherwise ->
+              runStdoutLoggingT
+                . filterLogger enableLogging
+                . flip runReaderT env
+                $ runTasks validated
   where
+    runTasks tasks = forM_ (nubOrd $ map sourceFeedUrl tasks) $ \url ->
+      runExceptT (runTasksForSource (filter ((== url) . sourceFeedUrl) tasks) url) >>= \case
+        Left err -> logError $ show err
+        Right _ -> return ()
+
     enableLogging _ level
       | env.options.quiet = level >= LevelWarn
       | env.options.verbose = True
@@ -237,38 +239,71 @@ validateTasks tasks = do
       return Nothing
     else return $ if null tasks then Nothing else Just tasks
 
-runTask :: FeedTask -> App ()
-runTask task = do
+runTasksForSource :: [FeedTask] -> URL -> App ()
+runTasksForSource tasks sourceFeedUrl = do
   env <- ask
-  let url = task.sourceFeedUrl
-  logDebug $ "Processing: " <> show url
-  logDebug $
-    ("Task params: saveSourceFeedEntries=" <> show task.saveSourceFeedEntries)
-      <> (", repeatedEntryCount=" <> show task.repeatedEntryCount)
-      <> (", minimumEntryAgeDays=" <> show task.minimumEntryAgeDays)
-      <> (", minRunGapDays=" <> show task.minRunGapDays)
-  now <- liftIO Time.getCurrentTime
-  let outputPath = env.options.outputDir </> task.outputFilename <> ".atom"
+  -- parse output files
+  (tasks, mOutputFeeds) <- unzip . catMaybes <$> traverse mParseOutputFile tasks
 
-  outputFeed <-
-    (Just <$> parseAtomFile outputPath) `catchError` \err -> do
-      logWarn $ "Failed to read output feed: " <> show err
-      return Nothing
-  let ancientTime = UTCTime (Time.fromGregorian 2000 1 1) 0
-      (outputFeedUpdatedAncient, outputFeedUpdatedNow) = case outputFeed of
-        Nothing -> (ancientTime, now)
+  -- get output file updates times
+  let (outputFeedsUpdatedAncient, outputFeedsUpdatedNow) = unzip $ flip map mOutputFeeds $ \case
+        Nothing -> (ancientTime, env.startTime)
         Just outputFeed ->
           let updated = parseDate $ Atom.feedUpdated outputFeed
-           in (fromMaybe ancientTime updated, fromMaybe now updated)
-  let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
-  if Time.diffUTCTime now outputFeedUpdatedAncient < minRunGapSeconds
-    then logInfo $ "Skipping run for URL: " <> show url
-    else
-      fetchCacheFeed task outputFeedUpdatedAncient
-        >>= processSourceFeed task outputFeed outputFeedUpdatedNow now
+           in (fromMaybe ancientTime updated, fromMaybe env.startTime updated)
 
-processSourceFeed :: FeedTask -> Maybe Atom.Feed -> UTCTime -> UTCTime -> Atom.Feed -> App ()
-processSourceFeed task mOutputFeed outputFeedUpdated now sourceFeed = do
+  -- skip run or get run task for tasks
+  actions <- fmap catMaybes . forM (zip4 tasks mOutputFeeds outputFeedsUpdatedAncient outputFeedsUpdatedNow) $
+    \(task, mOutputFeed, outputFeedUpdatedAncient, outputFeedUpdatedNow) -> do
+      let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
+      if Time.diffUTCTime env.startTime outputFeedUpdatedAncient < minRunGapSeconds
+        then do
+          logInfo $ "Skipping run for URL: " <> show sourceFeedUrl
+          return Nothing
+        else return $ Just $ \mSourceFeed ->
+          runTask task mSourceFeed mOutputFeed outputFeedUpdatedNow `catchError` (logError . show)
+
+  -- run tasks
+  unless (null actions) $ do
+    mSourceFeed <- mFetchFeed sourceFeedUrl $ maximum outputFeedsUpdatedAncient
+    traverse_ ($ mSourceFeed) actions
+  where
+    mFetchFeed url modTime =
+      (Just <$> fetchFeed url modTime) `catchError` \err -> do
+        case err of
+          FeedNotModifiedError -> logDebug $ "Feed not modified: " <> show url <> ", using cached"
+          _ -> logWarn $ "Unable to fetch fresh feed: " <> show url <> ", using cached: " <> show err
+        return Nothing
+
+    mParseOutputFile task = do
+      env <- ask
+      let outputPath = env.options.outputDir </> task.outputFilename <> ".atom"
+
+      (Just . (task,) . Just <$> parseAtomFile outputPath) -- file parses, task runs
+        `catchError` \case
+          IOError err -> do
+            -- file missing or unreadable, task still runs
+            logWarn $ "Failed to read output feed: " <> show err
+            return $ Just (task, Nothing)
+          err -> do
+            -- file corrupted, tasks does not run
+            logError $ "Corrupted output feed: " <> show err
+            return Nothing
+
+    runTask task sourceFeed outputFeed outputFeedUpdated = do
+      let url = task.sourceFeedUrl
+      logDebug $ "Processing: " <> show url
+      logDebug $
+        ("Task params: saveSourceFeedEntries=" <> show task.saveSourceFeedEntries)
+          <> (", repeatedEntryCount=" <> show task.repeatedEntryCount)
+          <> (", minimumEntryAgeDays=" <> show task.minimumEntryAgeDays)
+          <> (", minRunGapDays=" <> show task.minRunGapDays)
+
+      cacheSourceFeed task sourceFeed
+        >>= processSourceFeed task outputFeed outputFeedUpdated
+
+processSourceFeed :: FeedTask -> Maybe Atom.Feed -> UTCTime -> Atom.Feed -> App ()
+processSourceFeed task mOutputFeed outputFeedUpdated sourceFeed = do
   -- merge source and output feeds
   mergedFeed <- case mOutputFeed of
     Nothing -> return sourceFeed
@@ -278,8 +313,9 @@ processSourceFeed task mOutputFeed outputFeedUpdated now sourceFeed = do
   logDebug $ "Merged feed has " <> show (length allEntries) <> " entries"
 
   -- select entries
-  let timestamp = T.pack $ iso8601Show now
-  (selectedEntries', newEntries') <- selectEntries task outputFeedUpdated allEntries
+  env <- ask
+  let timestamp = T.pack $ iso8601Show env.startTime
+  (selectedEntries', newEntries') <- selectEntries task outputFeedUpdated env.startTime allEntries
   [selectedEntries, newEntries] <- traverse (traverse (resetEntryId timestamp)) [selectedEntries', newEntries']
 
   if null selectedEntries && null newEntries
@@ -301,7 +337,7 @@ processSourceFeed task mOutputFeed outputFeedUpdated now sourceFeed = do
       -- create new output feed
       let resultFeed =
             (fromMaybe sourceFeed mOutputFeed)
-              { Atom.feedUpdated = T.pack $ iso8601Show now,
+              { Atom.feedUpdated = timestamp,
                 Atom.feedEntries = combinedEntries
               }
 
@@ -309,7 +345,6 @@ processSourceFeed task mOutputFeed outputFeedUpdated now sourceFeed = do
       let url = task.sourceFeedUrl
       content <-
         fromMaybeOrThrow (FeedRenderError url.toString) . Feed.textFeed $ Feed.AtomFeed resultFeed
-      env <- ask
       let outputPath = env.options.outputDir </> task.outputFilename <> ".atom"
       writeFile outputPath content
       logDebug $ "Wrote to: " <> outputPath
@@ -329,19 +364,14 @@ cacheFileName url outputFilename =
   let d :: Digest SHA256 = Crypto.hash $ TE.encodeUtf8 $ T.pack $ url.toString <> ['\0'] <> outputFilename
    in show d <> ".atom"
 
-fetchCacheFeed :: FeedTask -> UTCTime -> App Atom.Feed
-fetchCacheFeed task feedUpdated = do
+cacheSourceFeed :: FeedTask -> Maybe Atom.Feed -> App Atom.Feed
+cacheSourceFeed task mFeed = do
   env <- ask
   let url = task.sourceFeedUrl
   let cacheFilePath = env.options.cacheDir </> cacheFileName url task.outputFilename
-  freshOrCachedFeed <-
-    (Right <$> fetchFeed url feedUpdated) `catchError` \err -> do
-      case err of
-        FeedNotModifiedError -> logDebug $ "Feed not modified: " <> show url <> ", using cached"
-        _ ->
-          logWarn $
-            "Unable to fetch fresh feed: " <> show url <> ", using cached: " <> show err
-      Left <$> parseAtomFile cacheFilePath
+  freshOrCachedFeed <- case mFeed of
+    Just feed -> pure $ Right feed
+    Nothing -> Left <$> parseAtomFile cacheFilePath
   mergedFeed <-
     if task.saveSourceFeedEntries
       then case freshOrCachedFeed of
@@ -362,12 +392,11 @@ fetchCacheFeed task feedUpdated = do
 fetchFeed :: URL -> UTCTime -> App Atom.Feed
 fetchFeed url modTime = do
   env <- ask
-  atomFeed <- fetchAndParse env.httpManager url.toString
-  logDebug $
-    "Fetched feed with " <> show (length $ Atom.feedEntries atomFeed) <> " entries"
-  return atomFeed
+  feed <- fetchAndParse env.startTime env.httpManager url.toString
+  logDebug $ "Fetched feed with " <> show (length $ Atom.feedEntries feed) <> " entries: " <> url.toString
+  return feed
   where
-    fetchAndParse man =
+    fetchAndParse now man =
       HTTP.parseRequest
         >>> tryOrThrow HTTPError
         >=> addHeaders
@@ -377,7 +406,7 @@ fetchFeed url modTime = do
         >>> fromMaybeOrThrow FeedNotModifiedError
         >=> Feed.parseFeedSource
         >>> fromMaybeOrThrow (FeedParseError url.toString)
-        >=> feedToAtom url
+        >=> feedToAtom now url
 
     addHeaders request =
       request
