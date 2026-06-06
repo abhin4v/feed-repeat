@@ -309,9 +309,8 @@ normalizeLink feedUrl link@Atom.Link {linkHref} =
 mergeFeeds :: Atom.Feed -> Atom.Feed -> Atom.Feed
 mergeFeeds feed1 feed2 =
   let allEntries = Atom.feedEntries feed1 <> Atom.feedEntries feed2
-      sortedEntries = sortBy (comparing (Down . Atom.entryUpdated)) allEntries
-      uniqueEntries = nubOrdOn getItemLinkOrId sortedEntries
-   in feed1 {Atom.feedEntries = uniqueEntries}
+      uniqueEntries = nubOrdOn getItemLinkOrId allEntries
+   in feed1 {Atom.feedEntries = sortBy (comparing (Down . Atom.entryUpdated)) uniqueEntries}
 
 selectEntries :: (MonadIO m) => FeedTask -> UTCTime -> UTCTime -> [Atom.Entry] -> m ([Atom.Entry], [Atom.Entry])
 selectEntries task outputFeedUpdated now entries = do

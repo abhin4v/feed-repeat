@@ -25,7 +25,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Either (isRight)
 import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
-import Data.List (nub, zip4, (\\))
+import Data.List (isPrefixOf, nub, zip4, (\\))
 import Data.List.Extra (nubOrd)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text qualified as T
@@ -42,9 +42,9 @@ import Network.HTTP.Client.TLS qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Options.Applicative qualified as Opt
 import PackageInfo_feed_repeat qualified as PI
-import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist, removeFile, renameFile)
+import System.Directory (canonicalizePath, copyFile, createDirectoryIfMissing, doesFileExist, removeFile, renameFile)
 import System.Exit (exitFailure)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (splitDirectories, takeDirectory, (<.>), (</>))
 import System.IO (hClose)
 import System.IO.Error (illegalOperationErrorType, mkIOError)
 import System.IO.Temp (withTempFile)
@@ -104,7 +104,7 @@ ancientTime = UTCTime (Time.fromGregorian 2000 1 1) 0
 main :: IO ()
 main = do
   now <- Time.getCurrentTime
-  options <-
+  options' <-
     Opt.execParser $
       Opt.info
         ( optionsParser
@@ -125,6 +125,10 @@ main = do
                 False -> throwIO $ HTTP.InvalidUrlException url "Request to private URL"
           }
   man <- HTTP.newTlsManagerWith manSettings
+
+  outputDir <- canonicalizePath options'.outputDir
+  cacheDir <- canonicalizePath options'.cacheDir
+  let options = options' {outputDir, cacheDir}
 
   let env = Env options man now
   createDirs [options.outputDir, options.cacheDir]
@@ -168,15 +172,15 @@ run env =
   Yaml.decodeFileEither env.options.configPath >>= \case
     Left err -> logErrorIO ("Error reading config: " <> show err) >> exitFailure
     Right tasks | null tasks -> logErrorIO "No tasks found in file" >> exitFailure
-    Right tasks -> do
-      migrateCacheFile env.options.cacheDir tasks
-      validateTasks tasks >>= \case
+    Right tasks ->
+      validateTasks env.options.outputDir tasks >>= \case
         Nothing -> exitFailure
         Just validated
           | env.options.validateOnly ->
               unless env.options.quiet $ do
                 logInfoIO $ "Config valid: " <> show (length validated) <> " tasks"
-          | otherwise ->
+          | otherwise -> do
+              migrateCacheFile env.options.cacheDir validated
               runStdoutLoggingT
                 . filterLogger enableLogging
                 . flip runReaderT env
@@ -220,11 +224,17 @@ migrateCacheFile cacheDir tasks = do
             Left (e :: IOException) -> do
               logWarnIO $ "Failed to remove old cache file " <> oldFileName <> ": " <> displayException e
 
-validateTasks :: [FeedTask] -> IO (Maybe [FeedTask])
-validateTasks tasks = do
+validateTasks :: FilePath -> [FeedTask] -> IO (Maybe [FeedTask])
+validateTasks outputDir tasks = do
   tasks <- fmap catMaybes . forM tasks $ \task ->
     checkPublicUrl task.sourceFeedUrl.toString >>= \case
-      True -> return $ Just task
+      True -> do
+        outputFP <- canonicalizePath $ outputDir </> task.outputFilename <.> "atom"
+        if splitDirectories outputDir `isPrefixOf` splitDirectories outputFP
+          then return $ Just task
+          else do
+            logErrorIO $ "Output file is outside output directory: " <> outputFP
+            return Nothing
       False -> do
         logErrorIO $ "Private source feed URL found: " <> task.sourceFeedUrl.toString
         return Nothing
@@ -376,7 +386,9 @@ cacheSourceFeed task mFeed = do
     if task.saveSourceFeedEntries
       then case freshOrCachedFeed of
         Right freshFeed ->
-          (mergeFeeds freshFeed <$> parseAtomFile cacheFilePath) `catchError` \_ -> return freshFeed
+          (mergeFeeds freshFeed <$> parseAtomFile cacheFilePath) `catchError` \err -> do
+            logWarn $ "Unable to parse cache file " <> cacheFilePath <> ", overwriting with source feed: " <> show err
+            return freshFeed
         Left cachedFeed -> return cachedFeed
       else return $ fromEither freshOrCachedFeed
 
