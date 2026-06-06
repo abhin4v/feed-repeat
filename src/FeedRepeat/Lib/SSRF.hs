@@ -1,4 +1,4 @@
-module Lib.SSRF (checkPublicUrl, isPrivateIPv4, isPrivateIPv6) where
+module FeedRepeat.Lib.SSRF (checkPublicUrl, isPrivateIPv4, isPrivateIPv6) where
 
 import Control.Exception (SomeException, try)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))

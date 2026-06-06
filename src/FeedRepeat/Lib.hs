@@ -2,12 +2,10 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 
-module Lib
+module FeedRepeat.Lib
   ( URL,
     newURL,
     checkPublicUrl,
-    isPrivateIPv4,
-    isPrivateIPv6,
     NonNegative,
     newNonNegative,
     FeedTask (..),
@@ -46,9 +44,9 @@ import Data.Time (UTCTime (..), diffUTCTime, nominalDay)
 import Data.Time.Format (defaultTimeLocale, parseTimeM, rfc822DateFormat)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.UUID.V4 qualified as UUID
+import FeedRepeat.Lib.SSRF (checkPublicUrl)
 import GHC.Generics (Generic)
 import GHC.Records (HasField (..))
-import Lib.SSRF (checkPublicUrl, isPrivateIPv4, isPrivateIPv6)
 import Network.HTTP.Client qualified as HTTP
 import Network.URI qualified as URI
 import System.FilePath

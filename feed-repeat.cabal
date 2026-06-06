@@ -31,6 +31,8 @@ common common-config
     , extra
     , filepath
     , hashable
+    , http-client
+    , monad-logger
     , text                  >=2.0
     , unordered-containers
 
@@ -59,19 +61,24 @@ library
   import:          common-config
   hs-source-dirs:  src
   exposed-modules:
-    Lib
-    Lib.SSRF
+    FeedRepeat.Lib
+    FeedRepeat.Lib.SSRF
+    FeedRepeat.Runner
 
   build-depends:
+    , crypton
     , feed
-    , http-client
+    , http-types
     , ip
     , mtl
     , network
     , network-uri
     , random
+    , retry
     , scientific   ^>=0.3.8.0
+    , temporary
     , time
+    , unix
     , uuid
 
 executable feed-repeat
@@ -80,19 +87,12 @@ executable feed-repeat
   hs-source-dirs: app
   other-modules:  PackageInfo_feed_repeat
   build-depends:
-    , crypton
     , feed
     , feed-repeat
-    , http-client
     , http-client-tls
-    , http-types
-    , monad-logger
     , mtl
     , optparse-applicative
-    , retry
-    , temporary
     , time
-    , unix
     , yaml
 
   ghc-options:    -funbox-strict-fields -threaded -rtsopts -with-rtsopts=-N

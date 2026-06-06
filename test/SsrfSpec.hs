@@ -1,6 +1,6 @@
 module SsrfSpec (ssrfSpec) where
 
-import Lib (checkPublicUrl, isPrivateIPv6)
+import FeedRepeat.Lib.SSRF (checkPublicUrl, isPrivateIPv6)
 import Test.Hspec
 
 ssrfSpec :: Spec
