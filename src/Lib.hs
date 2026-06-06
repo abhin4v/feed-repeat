@@ -25,14 +25,12 @@ where
 
 import Control.Applicative (asum, (<|>))
 import Control.Arrow ((>>>))
-import Control.Exception (Exception, IOException, SomeException, displayException, try)
+import Control.Exception (Exception, IOException, displayException, try)
 import Control.Monad (forM, (>=>))
 import Control.Monad.Except (MonadError, liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson ((.!=), (.:), (.:?))
 import Data.Aeson qualified as Aeson
-import Data.Bits ((.&.))
-import Data.Char (toLower)
 import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Function ((&))
 import Data.HashMap.Strict qualified as HM
@@ -48,11 +46,10 @@ import Data.Time (UTCTime (..), diffUTCTime, nominalDay)
 import Data.Time.Format (defaultTimeLocale, parseTimeM, rfc822DateFormat)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.UUID.V4 qualified as UUID
-import Data.Word (Word32, Word8)
 import GHC.Generics (Generic)
 import GHC.Records (HasField (..))
+import Lib.SSRF (checkPublicUrl, isPrivateIPv4, isPrivateIPv6)
 import Network.HTTP.Client qualified as HTTP
-import Network.Socket (AddrInfo (..), SockAddr (..), defaultHints, getAddrInfo, hostAddressToTuple)
 import Network.URI qualified as URI
 import System.FilePath
   ( addTrailingPathSeparator,
@@ -78,55 +75,6 @@ instance Show URL where
 
 newURL :: String -> Maybe URL
 newURL url = URL . show . HTTP.getUri <$> HTTP.parseRequest url
-
--- | SSRF check: resolves the host via DNS and checks
--- resolved IPs against private/reserved address ranges.
--- Returns False if the host is private, DNS fails, or the URL is invalid.
-checkPublicUrl :: String -> IO Bool
-checkPublicUrl url = case URI.parseURI url >>= URI.uriAuthority of
-  Nothing -> return False
-  Just auth -> do
-    let host = URI.uriRegName auth
-    if isPrivateName host
-      then return False
-      else do
-        results <- try $ getAddrInfo (Just defaultHints) (Just host) Nothing
-        case results of
-          Left (_ :: SomeException) -> return False
-          Right [] -> return False
-          Right addrs -> return $ not $ any (isPrivateSockAddr . addrAddress) addrs
-
-isPrivateName :: String -> Bool
-isPrivateName host =
-  let lower = map toLower host
-   in lower `elem` ["localhost", "localhost.localdomain", "localhost6", "ip6-localhost", "[::1]"]
-
-isPrivateSockAddr :: SockAddr -> Bool
-isPrivateSockAddr = \case
-  SockAddrInet _ addr -> isPrivateIPv4 $ hostAddressToTuple addr
-  SockAddrInet6 _ _ (w1, _, _, _) _ -> isPrivateIPv6 w1
-  _ -> False
-
-isPrivateIPv4 :: (Word8, Word8, Word8, Word8) -> Bool
-isPrivateIPv4 (a, b, c, _) =
-  a == 0 -- 0.0.0.0/8
-    || a == 10 -- 10.0.0.0/8
-    || a == 127 -- 127.0.0.0/8 (loopback)
-    || (a == 169 && b == 254) -- 169.254.0.0/16 (link-local)
-    || (a == 172 && b >= 16 && b <= 31) -- 172.16.0.0/12 (private B)
-    || (a == 192 && b == 168) -- 192.168.0.0/16 (private C)
-    || (a == 100 && b >= 64 && b <= 127) -- 100.64.0.0/10 (CGNAT)
-    || a >= 224 -- 224.0.0.0/4 (multicast + future)
-    || (a == 198 && (b == 18 || b == 19)) -- 198.18.0.0/15 (benchmark)
-    || (a == 192 && b == 0 && c == 0) -- 192.0.0.0/24 (IETF protocol assignments)
-
-isPrivateIPv6 :: Word32 -> Bool
-isPrivateIPv6 w1 =
-  w1 == 0 -- ::/32 (loopback, unspecified, IPv4-compatible, IPv4-mapped)
-    || (w1 .&. 0xffc00000) == 0xfe800000 -- fe80::/10 (link-local)
-    || (w1 .&. 0xfe000000) == 0xfc000000 -- fc00::/7 (ULA)
-    || (w1 .&. 0xff000000) == 0xff000000 -- ff00::/8 (multicast)
-    || (w1 .&. 0xffc00000) == 0xfec00000 -- fec0::/10 (site-local deprecated)
 
 instance Aeson.FromJSON URL where
   parseJSON = Aeson.withText "String" $ \str ->
