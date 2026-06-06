@@ -434,24 +434,24 @@ fetchFeed url modTime = do
                  ]
         }
 
-    fetchWithRetry man =
-      Retry.retrying
-        (Retry.capDelay 60_000_000 $ Retry.exponentialBackoff 1_000_000 <> Retry.limitRetries 3)
-        (const $ pure . HTTP.statusIsServerError . HTTP.responseStatus)
-        . const
-        . fetch man
+    fetchWithRetry man req =
+      ( Retry.retrying
+          (Retry.capDelay 60_000_000 $ Retry.exponentialBackoff 1_000_000 <> Retry.limitRetries 3)
+          (const $ pure . HTTP.statusIsServerError . HTTP.responseStatus)
+          . const
+          $ httpLBS man req
+      )
+        >>= throwHttpErrors req
 
-    fetch man request =
-      httpLBS man $
-        request
-          { HTTP.checkResponse = \req resp -> do
-              let status = HTTP.responseStatus resp
-              unless (HTTP.statusIsSuccessful status || HTTP.statusIsRedirection status) $ do
-                chunk <- HTTP.brReadSome (HTTP.responseBody resp) 1024
-                let resp' = void resp
-                let ex = HTTP.StatusCodeException resp' (LBS.toStrict chunk)
-                throwIO $ HTTP.HttpExceptionRequest req ex
-          }
+    throwHttpErrors req resp = do
+      let status = HTTP.responseStatus resp
+      unless (HTTP.statusIsSuccessful status || HTTP.statusIsRedirection status) $ do
+        let chunk = LBS.take 1024 $ HTTP.responseBody resp
+        let resp' = void resp
+        let ex = HTTP.StatusCodeException resp' $ LBS.toStrict chunk
+        throwIO $ HTTP.HttpExceptionRequest req ex
+
+      return resp
 
     httpLBS man req = do
       HTTP.withResponse req man $ \res -> do
