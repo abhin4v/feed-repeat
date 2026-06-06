@@ -19,7 +19,9 @@ build-type:         Simple
 category:           Web
 homepage:           https://github.com/abhin4v/feed-repeat
 bug-reports:        https://github.com/abhin4v/feed-repeat/issues
-extra-source-files: README.md
+extra-source-files:
+  CHANGELOG.md
+  README.md
 
 common common-config
   build-depends:

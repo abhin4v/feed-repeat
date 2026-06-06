@@ -18,6 +18,7 @@ A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetch
 - [CLI Usage](#cli-usage)
 - [Configuration](#configuration)
 - [License](#license)
+- [Changelog](#changelog)
 - [Contributing](#contributing)
 
 ## Features
@@ -300,6 +301,10 @@ See `config.yaml` for all available parameters and their meanings.
 ## License
 
 MIT
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 
