@@ -79,6 +79,7 @@ data Options = Options
   { configPath :: FilePath,
     outputDir :: FilePath,
     cacheDir :: FilePath,
+    userAgent :: T.Text,
     validateOnly :: Bool,
     verbose :: Bool,
     quiet :: Bool
@@ -281,13 +282,13 @@ cacheSourceFeed task mFeed = do
 fetchFeed :: URL -> FeedMetadata -> App (Atom.Feed, FeedMetadata)
 fetchFeed url metadata = do
   env <- ask
-  (feed, metadata) <- fetchAndParse env.startTime env.httpManager url.toString
+  (feed, metadata) <- fetchAndParse env.startTime env.httpManager env.options.userAgent url.toString
   logDebug $ "Fetched feed with " <> show (length $ Atom.feedEntries feed) <> " entries: " <> url.toString
   return (feed, metadata)
   where
-    fetchAndParse now man =
+    fetchAndParse now man userAgent =
       (HTTP.parseRequest >>> tryOrThrow HTTPError)
-        >=> (addHeaders >>> fetchWithRetry man >>> tryOrThrow HTTPError)
+        >=> (addHeaders userAgent >>> fetchWithRetry man >>> tryOrThrow HTTPError)
         >=> (checkForStatus HTTP.status304 >>> fromMaybeOrThrow FeedNotModifiedError)
         >=> (checkForStatus HTTP.status429 >>> fromMaybeOrThrow FeedTooManyRequestsError)
         >=> ( responseBodyAndMetadata
@@ -295,12 +296,12 @@ fetchFeed url metadata = do
             )
         >=> firstM (feedToAtom now url)
 
-    addHeaders request =
+    addHeaders userAgent request =
       request
         { HTTP.responseTimeout = HTTP.responseTimeoutMicro requestTimeoutMicros,
           HTTP.requestHeaders =
             HTTP.requestHeaders request
-              <> [(HTTP.hUserAgent, "feed-repeat")]
+              <> [(HTTP.hUserAgent, TE.encodeUtf8 userAgent)]
               <> [(HTTP.hIfModifiedSince, TE.encodeUtf8 lastMod) | Just lastMod <- [metadata.lastModified]]
               <> [(HTTP.hIfNoneMatch, TE.encodeUtf8 etag) | Just etag <- [metadata.etag]]
         }

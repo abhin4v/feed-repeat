@@ -129,6 +129,12 @@ in
 
     enableSSL = lib.mkEnableOption "SSL for Nginx";
 
+    userAgent = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "User-Agent header to send in HTTP requests. Defaults to \"feed-repeat\" if not set.";
+    };
+
     verbose = lib.mkEnableOption "verbose logging";
 
     quiet = lib.mkEnableOption "quiet logging (only warnings and errors)";
@@ -193,6 +199,7 @@ in
             --config ${configFile} \
             --output-dir ${cfg.outputDir} \
             --cache-dir ${cfg.cacheDir} \
+            ${lib.optionalString (cfg.userAgent != null) "--user-agent ${lib.escapeShellArg cfg.userAgent}"} \
             ${lib.optionalString cfg.verbose "--verbose"} \
             ${lib.optionalString cfg.quiet "--quiet"}
         '';

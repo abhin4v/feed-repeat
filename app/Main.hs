@@ -90,7 +90,13 @@ optionsParser =
       ( Opt.long "cache-dir"
           <> Opt.metavar "DIR"
           <> Opt.value "."
-          <> Opt.help "Directory where cached Atom files will be stored"
+          <> Opt.help "Directory where cached Atom files will be stored, default: '.'"
+      )
+    <*> Opt.strOption
+      ( Opt.long "user-agent"
+          <> Opt.metavar "STRING"
+          <> Opt.value "feed-repeat"
+          <> Opt.help "User-Agent header to send in HTTP requests, default: 'feed-repeat'"
       )
     <*> Opt.switch
       (Opt.long "validate" <> Opt.help "Only validate the config file and exit")
