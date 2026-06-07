@@ -20,7 +20,17 @@ write-ghc-environment-files: always
 -- CI Nix builds are unaffected by this and will use the default -O1
 optimization: False
 
--- Nix handles dependencies.
--- It is generally a bug if cabal has to download anything
--- In other words ~/.cabal should be empty (modulo some meta files)
-active-repositories: none
+-- Allow any package's version to exceed its Hackage upper bound. This is
+-- useful when running on a newer GHC than the one used to generate a
+-- freeze file (or when no freeze file is committed): boot libraries and
+-- many Hackage packages have upper bounds that lag behind new GHC
+-- releases. Safe because upper bounds are advisory, not load-bearing.
+allow-newer: all
+
+-- Pin the Hackage index to a specific point in time. This makes
+-- `cabal update` a no-op against the build: even if a future `cabal update`
+-- pulls a newer index, cabal will refuse to use it and warn. To pick up
+-- newer package versions, bump this timestamp deliberately (run
+-- `cabal update` and copy the new "index-state" it prints).
+index-state: 2026-06-07T00:00:00Z
+

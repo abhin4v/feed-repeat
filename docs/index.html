@@ -113,6 +113,7 @@ inserts them in output feeds.</p>
 <li><a href="#using-as-a-systemd-service">systemd Service</a></li>
 <li><a href="#using-as-a-docker-image">Docker</a></li>
 <li><a href="#serving-feeds-with-a-web-server">Web Server</a></li>
+<li><a href="#hosting-on-github-pages">GitHub Pages</a></li>
 </ul></li>
 <li><a href="#cli-usage">CLI Usage</a></li>
 <li><a href="#configuration">Configuration</a></li>
@@ -134,7 +135,7 @@ content.</li>
 for AArch64 and AMD64 architectures in the releases. It is also
 available as a <a
 href="https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat">Docker
-image</a> in the Github Container Repo.</p>
+image</a> in the GitHub Container Repo.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <p>This project is written in <a
 href="https://www.haskell.org/">Haskell</a>. You don’t need Haskell
@@ -170,8 +171,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Run the tool with example config</span></span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="ex">run</span></span></code></pre></div>
 <h2 id="usage">Usage</h2>
-<p>This project can be used as a Nix module, a Systemd service or a
-Docker container.</p>
+<p>This project can be used as a Nix module, a Systemd service, a Docker
+container, or hosted on GitHub Pages.</p>
 <h3 id="using-as-a-nixos-module">Using as a NixOS Module</h3>
 <p>The project includes a NixOS module (<code>nix/module.nix</code>) for
 easy integration into NixOS systems. Import it in your
@@ -329,6 +330,12 @@ Server</h3>
 <p>To serve the output feeds publicly, you can use any web server. Basic
 example configurations are provided for Nginx, Apache, and Caddy in the
 <code>configs</code> directory.</p>
+<h3 id="hosting-on-github-pages">Hosting on GitHub Pages</h3>
+<p>You can run and host <code>feed-repeat</code> on GitHub Actions and
+Pages: fork this repo, edit <code>config.yaml</code>, and let GitHub
+Actions publish your repeated feeds to GitHub Pages. See the full <a
+href="https://abhin4v.github.io/feed-repeat/hosting-on-github-pages.html">Hosting
+on GitHub Pages guide</a> for the step-by-step setup.</p>
 <h2 id="cli-usage">CLI Usage</h2>
 <div class="sourceCode" id="cb18"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">feed-repeat</span> <span class="at">--config</span> config.yaml <span class="at">--output-dir</span> ./output <span class="at">--cache-dir</span> ./cache</span></code></pre></div>

@@ -1,8 +1,11 @@
 cache
 output
 result*
+_site
+.cache
 .hie
 dist-newstyle
 .gcroots
 .ghc.environment*
 .envrc
+cabal.project.freeze

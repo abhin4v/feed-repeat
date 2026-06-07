@@ -15,6 +15,7 @@ A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetch
   - [systemd Service](#using-as-a-systemd-service)
   - [Docker](#using-as-a-docker-image)
   - [Web Server](#serving-feeds-with-a-web-server)
+  - [GitHub Pages](#hosting-on-github-pages)
 - [CLI Usage](#cli-usage)
 - [Configuration](#configuration)
 - [License](#license)
@@ -31,7 +32,7 @@ A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetch
 
 ## Installation
 
-`feed-repeat` is available as statically-linked binaries for AArch64 and AMD64 architectures in the releases. It is also available as a [Docker image](https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat) in the Github Container Repo.
+`feed-repeat` is available as statically-linked binaries for AArch64 and AMD64 architectures in the releases. It is also available as a [Docker image](https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat) in the GitHub Container Repo.
 
 ## Prerequisites
 
@@ -80,7 +81,7 @@ run
 
 ## Usage
 
-This project can be used as a Nix module, a Systemd service or a Docker container.
+This project can be used as a Nix module, a Systemd service, a Docker container, or hosted on GitHub Pages.
 
 ### Using as a NixOS Module
 
@@ -269,6 +270,10 @@ Since the container runs once and exits, you need to schedule it externally:
 ### Serving Feeds with a Web Server
 
 To serve the output feeds publicly, you can use any web server. Basic example configurations are provided for Nginx, Apache, and Caddy in the `configs` directory.
+
+### Hosting on GitHub Pages
+
+You can run and host `feed-repeat` on GitHub Actions and Pages: fork this repo, edit `config.yaml`, and let GitHub Actions publish your repeated feeds to GitHub Pages. See the full [Hosting on GitHub Pages guide](https://abhin4v.github.io/feed-repeat/hosting-on-github-pages.html) for the step-by-step setup.
 
 ## CLI Usage
 

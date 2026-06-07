@@ -1,0 +1,110 @@
+name: feed-repeat
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+env:
+  GHC_VERSION: "9.14"
+  CABAL_VERSION: "3.16"
+
+jobs:
+  update:
+    name: build
+    if: github.repository != 'abhin4v/feed-repeat'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: setup Haskell
+        id: setup
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: ${{ env.CABAL_VERSION }}
+
+      - name: cache Haskell build
+        uses: actions/cache@v4
+        with:
+          path: dist-newstyle
+          key: ${{ runner.os }}-dist-${{ steps.setup.outputs.ghc-version }}-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'feed-repeat.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-dist-${{ steps.setup.outputs.ghc-version }}-${{ steps.setup.outputs.cabal-version }}-
+
+      - name: cache cabal store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: ${{ runner.os }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'feed-repeat.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-cabal-${{ steps.setup.outputs.cabal-version }}-
+
+      - name: cache feed data
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: cache-${{ github.run_id }}
+          restore-keys: |
+            cache-
+
+      - name: cache output
+        uses: actions/cache@v4
+        with:
+          path: _site
+          key: output-${{ github.run_id }}
+          restore-keys: |
+            output-
+
+      - name: validate config
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/x /tmp/y
+          cabal run feed-repeat -- \
+            --config config.yaml \
+            --output-dir /tmp/x \
+            --cache-dir /tmp/y \
+            --validate
+
+      - name: check CNAME
+        run: |
+          set -euxo pipefail
+          if [ -f CNAME ] && [ ! -s CNAME ]; then
+            echo "::warning::CNAME file exists but is empty; ignoring"
+            rm CNAME
+          fi
+
+      - name: generate feeds
+        run: |
+          set -euxo pipefail
+          PAGES_URL="https://$(echo "${{ github.repository }}" | cut -d/ -f1).github.io/$(echo "${{ github.repository }}" | cut -d/ -f2)/"
+          if [ -f CNAME ]; then
+            PAGES_URL="https://$(cat CNAME)/"
+          fi
+          VERSION=$(cabal run feed-repeat -- --version | awk '/^feed-repeat version/ {print $3}')
+          USER_AGENT="feed-repeat/${VERSION} (+${PAGES_URL})"
+          mkdir -p .cache _site
+          cabal run feed-repeat -- \
+            --config config.yaml \
+            --output-dir _site \
+            --cache-dir .cache \
+            --user-agent "${USER_AGENT}" \
+            --verbose
+
+      - name: copy CNAME
+        run: |
+          set -euxo pipefail
+          [ -f CNAME ] && cp CNAME _site/CNAME || true
+
+      - name: publish
+        uses: crazy-max/ghaction-github-pages@v4
+        with:
+          target_branch: gh-pages
+          build_dir: _site
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
