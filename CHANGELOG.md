@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Canonicalization of output and cache directory paths.
 - ETag and Last-Modified header persistence for conditional feed fetches.
 - Configurable `User-Agent` header via `--user-agent` CLI option.
+- Configurable service username in the NixOS module via the `userName` option.
 
 ### Changed
 - Cache files are now per-task instead of per-source, enabling different `saveSourceFeedEntries` per task for the same source URL. Old cache files are migrated automatically to the new file names.
