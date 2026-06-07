@@ -1,186 +1,96 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <title>feed-repeat</title>
   <style>
-code{white-space: pre-wrap;}
-span.smallcaps{font-variant: small-caps;}
-div.columns{display: flex; gap: min(4vw, 1.5em);}
-div.column{flex: auto; overflow-x: auto;}
-div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
-
-ul.task-list[class]{list-style: none;}
-ul.task-list li input[type="checkbox"] {
-font-size: inherit;
-width: 0.8em;
-margin: 0 0.8em 0.2em -1.6em;
-vertical-align: middle;
-}
-.display.math{display: block; text-align: center; margin: 0.5rem auto;}
-
-html { -webkit-text-size-adjust: 100%; }
-pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
-pre > code.sourceCode > span:empty { height: 1.2em; }
-.sourceCode { overflow: visible; }
-code.sourceCode > span { color: inherit; text-decoration: inherit; }
-div.sourceCode { margin: 1em 0; }
-pre.sourceCode { margin: 0; }
-@media screen {
-div.sourceCode { overflow: auto; }
-}
-@media print {
-pre > code.sourceCode { white-space: pre-wrap; }
-pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
-}
-pre.numberSource code
-{ counter-reset: source-line 0; }
-pre.numberSource code > span
-{ position: relative; left: -4em; counter-increment: source-line; }
-pre.numberSource code > span > a:first-child::before
-{ content: counter(source-line);
-position: relative; left: -1em; text-align: right; vertical-align: baseline;
-border: none; display: inline-block;
--webkit-touch-callout: none; -webkit-user-select: none;
--khtml-user-select: none; -moz-user-select: none;
--ms-user-select: none; user-select: none;
-padding: 0 4px; width: 4em;
-color: #aaaaaa;
-}
-pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
-div.sourceCode
-{ }
-@media screen {
-pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
-}
-code span.al { color: #ff0000; font-weight: bold; } 
-code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
-code span.at { color: #7d9029; } 
-code span.bn { color: #40a070; } 
-code span.bu { color: #008000; } 
-code span.cf { color: #007020; font-weight: bold; } 
-code span.ch { color: #4070a0; } 
-code span.cn { color: #880000; } 
-code span.co { color: #60a0b0; font-style: italic; } 
-code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
-code span.do { color: #ba2121; font-style: italic; } 
-code span.dt { color: #902000; } 
-code span.dv { color: #40a070; } 
-code span.er { color: #ff0000; font-weight: bold; } 
-code span.ex { } 
-code span.fl { color: #40a070; } 
-code span.fu { color: #06287e; } 
-code span.im { color: #008000; font-weight: bold; } 
-code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
-code span.kw { color: #007020; font-weight: bold; } 
-code span.op { color: #666666; } 
-code span.ot { color: #007020; } 
-code span.pp { color: #bc7a00; } 
-code span.sc { color: #4070a0; } 
-code span.ss { color: #bb6688; } 
-code span.st { color: #4070a0; } 
-code span.va { color: #19177c; } 
-code span.vs { color: #4070a0; } 
-code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
-</style>
-  <style type="text/css">
-
-body {
-background-color: #ffffff;
-color: #1e1e1e;
-font-family: sans-serif;
-font-size: 18px;
-line-height: 1.6;
-margin: 0 auto;
-padding: 2rem;
-max-width: 50rem;
-}
-
-h1, h2, h3, h4, h5, h6 {
-color: #111111;
-margin-top: 1.5em;
-}
-h1, h2 {
-border-bottom: 1px solid #ccc;
-padding-bottom: 0.3em;
-}
-
-a {
-color: #0066cc;
-text-decoration: none;
-}
-a:hover {
-text-decoration: underline;
-}
-
-pre, code {
-background-color: #f5f5f5;
-color: #c7254e;
-border-radius: 4px;
-font-family: monospace;
-}
-pre {
-padding: 1em;
-overflow-x: auto;
-white-space: pre-wrap;
-word-wrap: break-word;
-}
-
-blockquote {
-border-left: 4px solid #ccc;
-margin: 1em 0;
-padding-left: 1em;
-color: #666;
-font-style: italic;
-}
-
-ul, ol {
-padding-left: 1.5em;
-}
-
-table {
-border-collapse: collapse;
-margin: 1em 0;
-width: 100%;
-display: block;
-overflow-x: auto;
-}
-table, th, td {
-border: 1px solid #ccc;
-}
-th, td {
-padding: 0.5em;
-}
-th {
-background: #eee;
-color: #111;
-}
-
-img, video, iframe {
-max-width: 100%;
-height: auto;
-display: block;
-margin: 1em auto;
-}
-
-hr {
-border: none;
-border-top: 1px solid #ccc;
-}
-
-p {
-margin: 1em 0;
-}
-nav {
-text-align: right;
-}
-</style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="light.css" />
 </head>
 <body>
-<nav><a href="index.html">Home</a> | <a href="nix-module-options.html">NixOS Module Options</a> | <a href="CHANGELOG.html">Changelog</a> | <a href="https://github.com/abhin4v/feed-repeat">Source</a></nav>
+<nav><a href="index.html">Home</a><a href="nix-module-options.html">NixOS Options</a><a href="CHANGELOG.html">Changelog</a><a href="https://github.com/abhin4v/feed-repeat">Source</a></nav>
 
 <h1 id="feed-repeat">feed-repeat</h1>
 <p>A Haskell tool that repeats entries from RSS/Atom feeds into new
@@ -222,28 +132,35 @@ content.</li>
 <h2 id="installation">Installation</h2>
 <p><code>feed-repeat</code> is available as statically-linked binaries
 for AArch64 and AMD64 architectures in the releases. It is also
-available as a <a href="https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat">Docker
+available as a <a
+href="https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat">Docker
 image</a> in the Github Container Repo.</p>
 <h2 id="prerequisites">Prerequisites</h2>
-<p>This project is written in <a href="https://www.haskell.org/">Haskell</a>. You don’t need Haskell
+<p>This project is written in <a
+href="https://www.haskell.org/">Haskell</a>. You don’t need Haskell
 experience to use this tool, but you’ll need the Haskell compiler and
 build tools installed to build it.</p>
-<p>The easiest way to install Haskell is via <a href="https://www.haskell.org/ghcup/">GHCup</a>. Run GHCup to install
+<p>The easiest way to install Haskell is via <a
+href="https://www.haskell.org/ghcup/">GHCup</a>. Run GHCup to install
 GHC (9.10+) and Cabal (3.4+). Alternatively, check your system’s package
 manager for pre-built packages.</p>
 <p><a href="https://nixos.org">Nix</a> is optional. It is required for
 <code>nix</code> builds and NixOS module support.</p>
 <h2 id="building">Building</h2>
 <p>First, clone the repository and navigate into it:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/abhin4v/feed-repeat.git</span>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/abhin4v/feed-repeat.git</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> feed-repeat</span></code></pre></div>
 <h3 id="build-with-cabal">Build with Cabal</h3>
-<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> build</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> build</span></code></pre></div>
 <h3 id="build-with-nix">Build with Nix</h3>
 <p>Enter the Nix shell:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nix-shell</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nix-shell</span></span></code></pre></div>
 <p>Run the scripts available in Nix shell:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build the project</span></span>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build the project</span></span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">build</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a static binary</span></span>
@@ -259,7 +176,8 @@ Docker container.</p>
 <p>The project includes a NixOS module (<code>nix/module.nix</code>) for
 easy integration into NixOS systems. Import it in your
 configuration:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode nix"><code class="sourceCode nix"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode nix"><code class="sourceCode nix"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="va">imports</span> <span class="op">=</span> <span class="op">[</span> <span class="ss">./feed-repeat/nix/module.nix</span> <span class="op">];</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="va">services</span>.<span class="va">feed-repeat</span> <span class="op">=</span> <span class="op">{</span></span>
@@ -305,35 +223,44 @@ configuration:</p>
 up:</p>
 <ol type="1">
 <li><p>Create user and group:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> useradd <span class="at">-r</span> <span class="at">-s</span> /bin/false feed-repeat</span></code></pre></div></li>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> useradd <span class="at">-r</span> <span class="at">-s</span> /bin/false feed-repeat</span></code></pre></div></li>
 <li><p>Create required directories:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> mkdir <span class="at">-p</span> /var/lib/feed-repeat /var/cache/feed-repeat /etc/feed-repeat</span>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> mkdir <span class="at">-p</span> /var/lib/feed-repeat /var/cache/feed-repeat /etc/feed-repeat</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown feed-repeat:feed-repeat /var/lib/feed-repeat /var/cache/feed-repeat</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chmod 750 /var/lib/feed-repeat /var/cache/feed-repeat</span></code></pre></div></li>
 <li><p>Add web server user to feed-repeat group:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> usermod <span class="at">-a</span> <span class="at">-G</span> feed-repeat www-data</span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> usermod <span class="at">-a</span> <span class="at">-G</span> feed-repeat www-data</span></code></pre></div>
 <p>This allows the web server (running as www-data) to read the output
 feeds from <code>/var/lib/feed-repeat</code>. Change the user as
 appropriate.</p></li>
 <li><p>Install the service file:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp configs/feed-repeat.service /etc/systemd/system/</span></code></pre></div></li>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp configs/feed-repeat.service /etc/systemd/system/</span></code></pre></div></li>
 <li><p>Place your configuration:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp config.yaml /etc/feed-repeat/config.yaml</span>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp config.yaml /etc/feed-repeat/config.yaml</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown feed-repeat:feed-repeat /etc/feed-repeat/config.yaml</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chmod 640 /etc/feed-repeat/config.yaml</span></code></pre></div></li>
 <li><p>Build and install the binary:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> install <span class="at">--installdir</span><span class="op">=</span>/tmp <span class="at">--install-method</span><span class="op">=</span>copy <span class="at">--overwrite-policy</span><span class="op">=</span>always</span>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> install <span class="at">--installdir</span><span class="op">=</span>/tmp <span class="at">--install-method</span><span class="op">=</span>copy <span class="at">--overwrite-policy</span><span class="op">=</span>always</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> install <span class="at">-D</span> <span class="at">-m</span> 0755 /tmp/feed-repeat /usr/local/bin/feed-repeat</span></code></pre></div>
 <p>Or use the binaries available for download.</p></li>
 <li><p>Install the timer unit:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp configs/feed-repeat.timer /etc/systemd/system/</span></code></pre></div></li>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp configs/feed-repeat.timer /etc/systemd/system/</span></code></pre></div></li>
 <li><p>Enable and start the service:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> systemctl daemon-reload</span>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> systemctl daemon-reload</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> systemctl enable <span class="at">--now</span> feed-repeat.timer</span></code></pre></div></li>
 </ol>
 <h3 id="using-as-a-docker-image">Using as a Docker Image</h3>
 <p>A Docker image can be built with Nix:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enter nix-shell, then build the Docker image</span></span>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enter nix-shell, then build the Docker image</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">build-docker</span> x86_64</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="co"># or build-docker aarch64</span></span>
 <span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a></span>
@@ -353,7 +280,8 @@ appropriate.</p></li>
 <code>1000:1000</code>). If you bind-mount host directories instead of
 using named volumes, ensure they are writable by that UID, for
 example:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown <span class="at">-R</span> 1000:1000 /path/to/output /path/to/cache</span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown <span class="at">-R</span> 1000:1000 /path/to/output /path/to/cache</span></code></pre></div>
 <p>Named Docker volumes (as used in the examples above) are handled
 automatically by the Docker runtime.</p>
 <h4 id="scheduling-runs">Scheduling Runs</h4>
@@ -362,11 +290,13 @@ externally:</p>
 <ul>
 <li><p>Use the host’s cron or systemd timer to run the container
 periodically:</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Via cron: add to crontab (runs daily at 2 AM)</span></span>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Via cron: add to crontab (runs daily at 2 AM)</span></span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">0</span> 2 <span class="pp">*</span> <span class="pp">*</span> <span class="pp">*</span> docker run <span class="at">-v</span> /path/to/config.yaml:/etc/feed-repeat/config.yaml:ro <span class="at">-v</span> feed-repeat-output:/var/lib/feed-repeat <span class="at">-v</span> feed-repeat-cache:/var/cache/feed-repeat feed-repeat:latest</span></code></pre></div></li>
 <li><p>Docker Compose with Ofelia: Use Docker Compose with the Ofelia
 scheduler to run the container on a schedule:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">services</span><span class="kw">:</span></span>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">services</span><span class="kw">:</span></span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">feed-repeat</span><span class="kw">:</span></span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">image</span><span class="kw">:</span><span class="at"> feed-repeat:latest</span></span>
 <span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">volumes</span><span class="kw">:</span></span>
@@ -400,7 +330,8 @@ Server</h3>
 example configurations are provided for Nginx, Apache, and Caddy in the
 <code>configs</code> directory.</p>
 <h2 id="cli-usage">CLI Usage</h2>
-<div class="sourceCode" id="cb18"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">feed-repeat</span> <span class="at">--config</span> config.yaml <span class="at">--output-dir</span> ./output <span class="at">--cache-dir</span> ./cache</span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">feed-repeat</span> <span class="at">--config</span> config.yaml <span class="at">--output-dir</span> ./output <span class="at">--cache-dir</span> ./cache</span></code></pre></div>
 <h3 id="options">Options</h3>
 <ul>
 <li><code>--config FILE</code>: Path to YAML configuration file
@@ -419,7 +350,8 @@ exit.</li>
 </ul>
 <h2 id="configuration">Configuration</h2>
 <p>Create a YAML file with a list of feed tasks:</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">sourceFeedUrl</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;https://example.com/feed.atom&quot;</span></span>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">sourceFeedUrl</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;https://example.com/feed.atom&quot;</span></span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">outputFilename</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;unique-id-1&quot;</span></span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">saveSourceFeedEntries</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
 <span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">repeatedEntryCount</span><span class="kw">:</span><span class="at"> </span><span class="dv">3</span></span>
@@ -440,7 +372,8 @@ meanings.</p>
 <h2 id="changelog">Changelog</h2>
 <p>See <a href="CHANGELOG.html">CHANGELOG</a>.</p>
 <h2 id="contributing">Contributing</h2>
-<p>I consider this is a done software. Maybe some day when <a href="https://www.jsonfeed.org/">JSONFeed</a> gets popular, I’d consider
+<p>I consider this is a done software. Maybe some day when <a
+href="https://www.jsonfeed.org/">JSONFeed</a> gets popular, I’d consider
 adding support for it. Other than that, I don’t foresee adding any new
 features. I’ll keep doing bugfixes, security fixes and dependency
 upgrades.</p>
@@ -450,5 +383,6 @@ reason.</p>
 <p>Disclaimer: This is a personal project. The views, code, and opinions
 expressed here are my own and do not represent those of my current or
 past employers.</p>
+<footer>Made with <a href="https://www.haskell.org/">Haskell</a> by <a href="https://abhinavsarkar.net/">Abhinav Sarkar</a></footer>
 </body>
 </html>

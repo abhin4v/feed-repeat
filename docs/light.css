@@ -12,12 +12,13 @@ body {
   margin: 0 auto;
   padding: 2rem;
   max-width: 50rem;
+  container-type: size;
 }
 
 /* Headings */
 h1, h2, h3, h4, h5, h6 {
   color: #111111;
-  margin-top: 1.5em;
+  margin-top: 1em;
 }
 
 h1, h2 {
@@ -32,6 +33,9 @@ a {
 }
 a:hover {
   text-decoration: underline;
+  text-underline-offset: 0.1lh;
+  text-decoration-skip-ink: auto;
+  text-decoration-thickness: 0.12em;
 }
 
 /* Code blocks and inline code */
@@ -102,5 +106,27 @@ p {
 }
 
 nav {
-  text-align: right;
+  display: flex;
+  justify-content: space-around;
+  margin: 0 auto;
+}
+
+@container (width < 35rem) {
+  nav {
+    flex-direction: column;
+    text-align: right;
+  }
+}
+
+@container (width > 45rem) {
+  nav {
+    max-width: 70cqi;
+  }
+}
+
+footer {
+  border-top: 1px solid #ccc;
+  padding: 0.25em;
+  text-align: center;
+  font-size: smaller;
 }

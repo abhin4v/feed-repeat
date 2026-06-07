@@ -7,14 +7,14 @@ mkdir -p docs
 touch docs/.nojekyll
 
 # Generate index.html from README
-pandoc --standalone --embed-resources --css docs/light.css --metadata title="feed-repeat" README.md -o docs/index.html
+pandoc --standalone  --css light.css --metadata title="feed-repeat" README.md -o docs/index.html
 
 # Generate CHANGELOG.html from CHANGELOG
-pandoc --standalone --embed-resources --css docs/light.css --metadata title="Changelog — feed-repeat" CHANGELOG.md -o docs/CHANGELOG.html
+pandoc --standalone  --css light.css --metadata title="Changelog — feed-repeat" CHANGELOG.md -o docs/CHANGELOG.html
 
 # Generate docs/nix-module-options.md from the Nix module, then render to HTML
 gen-nix-module-docs
-pandoc --standalone --embed-resources --css docs/light.css --metadata title="NixOS Module Options — feed-repeat" docs/nix-module-options.md -o docs/nix-module-options.html
+pandoc --standalone  --css light.css --metadata title="NixOS Module Options — feed-repeat" docs/nix-module-options.md -o docs/nix-module-options.html
 
 # Fix CHANGELOG.md link in index.html to point to CHANGELOG.html
 sed -i 's#href="CHANGELOG\.md"#href="CHANGELOG.html"#g' docs/index.html
@@ -26,7 +26,8 @@ done
 
 # Add navigation bar to all pages (after <body>)
 for f in docs/index.html docs/CHANGELOG.html docs/nix-module-options.html; do
-  sed -i "s#<body>#<body>\n<nav><a href=\"index.html\">Home</a> | <a href=\"nix-module-options.html\">NixOS Module Options</a> | <a href=\"CHANGELOG.html\">Changelog</a> | <a href=\"https://github.com/abhin4v/feed-repeat\">Source</a></nav>\n#" "$f"
+  sed -i "s#<body>#<body>\n<nav><a href=\"index.html\">Home</a><a href=\"nix-module-options.html\">NixOS Options</a><a href=\"CHANGELOG.html\">Changelog</a><a href=\"https://github.com/abhin4v/feed-repeat\">Source</a></nav>\n#" "$f"
+  sed -i "s#</body>#<footer>Made with <a href=\"https://www.haskell.org/\">Haskell</a> by <a href=\"https://abhinavsarkar.net/\">Abhinav Sarkar</a></footer>\n</body>#" "$f"
 done
 
 echo "Site built in docs/"
