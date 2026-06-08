@@ -1,6 +1,6 @@
 # feed-repeat
 
-A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetches entries from source feeds, and selects a random subset using weighted sampling where older entries have higher priority, and inserts them in output feeds.
+A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetches entries from source feeds, and selects a random subset using weighted sampling where older entries have higher priority, and inserts them in output feeds. [This blog post](https://abhinavsarkar.net/notes/2026-feed-repeat/) describes the motivation behind it.
 
 ## Table of Contents
 
