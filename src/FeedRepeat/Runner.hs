@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module FeedRepeat.Runner
   ( Options (..),
@@ -37,11 +38,8 @@ import Data.Aeson qualified as Aeson
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 import Data.ByteString.Lazy qualified as LBS
-import Data.Either (isRight)
-import Data.Either.Extra (fromEither)
 import Data.Foldable (traverse_)
-import Data.List (zip4)
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Lazy qualified as LT
@@ -115,22 +113,22 @@ runTasksForSource tasks sourceFeedUrl = do
   (tasks, mOutputFeeds) <- unzip . catMaybes <$> traverse mParseOutputFile tasks
 
   -- get output file updates times
-  let (outputFeedsUpdatedAncient, outputFeedsUpdatedNow) = unzip $ flip map mOutputFeeds $ \case
-        Nothing -> (ancientTime, env.startTime)
+  let outputFeedsUpdated = flip map mOutputFeeds $ \case
+        Nothing -> ancientTime
         Just outputFeed ->
           let updated = parseDate $ Atom.feedUpdated outputFeed
-           in (fromMaybe ancientTime updated, fromMaybe env.startTime updated)
+           in fromMaybe ancientTime updated
 
   -- skip run or get run task for tasks
-  actions <- fmap catMaybes . forM (zip4 tasks mOutputFeeds outputFeedsUpdatedAncient outputFeedsUpdatedNow) $
-    \(task, mOutputFeed, outputFeedUpdatedAncient, outputFeedUpdatedNow) -> do
+  actions <- fmap catMaybes . forM (zip3 tasks mOutputFeeds outputFeedsUpdated) $
+    \(task, mOutputFeed, outputFeedUpdated) -> do
       let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
-      if Time.diffUTCTime env.startTime outputFeedUpdatedAncient < minRunGapSeconds
+      if Time.diffUTCTime env.startTime outputFeedUpdated < minRunGapSeconds
         then do
           logInfo $ "Skipping run for URL: " <> show sourceFeedUrl
           return Nothing
         else return $ Just $ \mSourceFeed ->
-          runTask task mSourceFeed mOutputFeed outputFeedUpdatedNow `catchError` (logError . show)
+          runTask task mSourceFeed mOutputFeed `catchError` (logError . show)
 
   -- run tasks
   unless (null actions) $ do
@@ -143,9 +141,8 @@ runTasksForSource tasks sourceFeedUrl = do
     parseFeedMetadata' metadataFilePath =
       parseFeedMetadata metadataFilePath
         `catchError` \err -> do
-          case err of
-            IOError err -> logDebug $ "Failed to read feed metadata: " <> show err
-            err -> logWarn $ "Failed to read feed metadata: " <> show err
+          (case err of IOError _ -> logDebug; _ -> logWarn) $
+            "Failed to read feed metadata: " <> show err
           return $ FeedMetadata Nothing Nothing
 
     saveFeedMetadata' metadataFilePath metadata =
@@ -178,7 +175,7 @@ runTasksForSource tasks sourceFeedUrl = do
             logWarn $ "Corrupted output feed: " <> show err
             return Nothing
 
-    runTask task sourceFeed outputFeed outputFeedUpdated = do
+    runTask task sourceFeed outputFeed = do
       let url = task.sourceFeedUrl
       logDebug $ "Processing: " <> show url
       logDebug $
@@ -187,11 +184,10 @@ runTasksForSource tasks sourceFeedUrl = do
           <> (", minimumEntryAgeDays=" <> show task.minimumEntryAgeDays)
           <> (", minRunGapDays=" <> show task.minRunGapDays)
 
-      cacheSourceFeed task sourceFeed
-        >>= processSourceFeed task outputFeed outputFeedUpdated
+      cacheSourceFeed task sourceFeed >>= processSourceFeed task outputFeed
 
-processSourceFeed :: FeedTask -> Maybe Atom.Feed -> UTCTime -> Atom.Feed -> App ()
-processSourceFeed task mOutputFeed outputFeedUpdated sourceFeed = do
+processSourceFeed :: FeedTask -> Maybe Atom.Feed -> (Atom.Feed, [Atom.Entry]) -> App ()
+processSourceFeed task mOutputFeed (sourceFeed, newEntries') = do
   -- merge source and output feeds
   mergedFeed <- case mOutputFeed of
     Nothing -> return sourceFeed
@@ -203,8 +199,9 @@ processSourceFeed task mOutputFeed outputFeedUpdated sourceFeed = do
   -- select entries
   env <- ask
   let timestamp = T.pack $ iso8601Show env.startTime
-  (selectedEntries', newEntries') <- selectEntries task outputFeedUpdated env.startTime allEntries
-  [selectedEntries, newEntries] <- traverse (traverse (resetEntryId timestamp)) [selectedEntries', newEntries']
+  selectedEntries' <- selectEntries task env.startTime allEntries newEntries'
+  [selectedEntries, newEntries] <-
+    traverse (traverse (resetEntryId timestamp)) [selectedEntries', newEntries']
 
   if null selectedEntries && null newEntries
     then logWarn "Selected no new entries or entries for repetition"
@@ -252,32 +249,37 @@ cacheFileName :: URL -> String -> String
 cacheFileName url outputFilename =
   sha256Hash (url.toString <> ['\0'] <> outputFilename) <> ".atom"
 
-cacheSourceFeed :: FeedTask -> Maybe Atom.Feed -> App Atom.Feed
-cacheSourceFeed task mFeed = do
+cacheSourceFeed :: FeedTask -> Maybe Atom.Feed -> App (Atom.Feed, [Atom.Entry])
+cacheSourceFeed task mSourceFeed = do
   env <- ask
   let url = task.sourceFeedUrl
   let cacheFilePath = env.options.cacheDir </> cacheFileName url task.outputFilename
-  freshOrCachedFeed <- case mFeed of
-    Just feed -> pure $ Right feed
-    Nothing -> Left <$> parseAtomFile cacheFilePath
-  mergedFeed <-
-    if task.saveSourceFeedEntries
-      then case freshOrCachedFeed of
-        Right freshFeed ->
-          (mergeFeeds freshFeed <$> parseAtomFile cacheFilePath) `catchError` \err -> do
-            logWarn $ "Unable to parse cache file " <> cacheFilePath <> ", overwriting with source feed: " <> show err
-            return freshFeed
-        Left cachedFeed -> return cachedFeed
-      else return $ fromEither freshOrCachedFeed
 
-  when (isRight freshOrCachedFeed) $
+  eCachedFeed <-
+    (Right <$> parseAtomFile cacheFilePath) `catchError` \err -> do
+      (case err of IOError _ -> logDebug; _ -> logWarn) $
+        "Unable to parse cache file " <> cacheFilePath <> ": " <> show err
+      return $ Left err
+
+  mergedFeed <-
+    if
+      | task.saveSourceFeedEntries,
+        Just sourceFeed <- mSourceFeed,
+        Right cachedFeed <- eCachedFeed ->
+          pure $ mergeFeeds sourceFeed cachedFeed
+      | Just sourceFeed <- mSourceFeed -> pure sourceFeed
+      | otherwise -> case eCachedFeed of
+          Right cachedFeed -> pure cachedFeed
+          Left err -> throwError err
+
+  when (isJust mSourceFeed) $
     case Feed.textFeed (Feed.AtomFeed mergedFeed) of
       Nothing -> logWarn $ "Failed to export feed for URL: " <> show url
       Just txt ->
         (writeFile cacheFilePath txt >> logDebug ("Cached to: " <> cacheFilePath))
           `catchError` (logWarn . ("Failed to write cache file: " <>) . show)
 
-  return mergedFeed
+  return (mergedFeed, computeNewEntries task.passthroughNewEntries mSourceFeed eCachedFeed)
 
 fetchFeed :: URL -> FeedMetadata -> App (Atom.Feed, FeedMetadata)
 fetchFeed url metadata = do

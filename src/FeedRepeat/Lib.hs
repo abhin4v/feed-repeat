@@ -13,11 +13,13 @@ module FeedRepeat.Lib
     feedToAtom,
     mergeFeeds,
     selectEntries,
+    computeNewEntries,
     mkUuidUrn,
     parseDate,
     tryOrThrow,
     fromMaybeOrThrow,
     extractDomain,
+    getItemLinkOrId,
   )
 where
 
@@ -33,6 +35,7 @@ import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Function ((&))
 import Data.HashMap.Strict qualified as HM
 import Data.HashSet qualified as HS
+import Data.HashSet qualified as Set
 import Data.Hashable (Hashable)
 import Data.List (sortBy)
 import Data.List.Extra (nubOrdOn)
@@ -262,21 +265,11 @@ mergeFeeds feed1 feed2 =
       uniqueEntries = nubOrdOn getItemLinkOrId allEntries
    in feed1 {Atom.feedEntries = sortBy (comparing (Down . Atom.entryUpdated)) uniqueEntries}
 
-selectEntries :: (MonadIO m) => FeedTask -> UTCTime -> UTCTime -> [Atom.Entry] -> m ([Atom.Entry], [Atom.Entry])
-selectEntries task outputFeedUpdated now entries = do
-  let newEntries =
-        if task.passthroughNewEntries
-          then
-            [ entry
-            | entry <- entries,
-              Just pubDate <- [Atom.entryPublished entry],
-              Just pubTime <- [parseDate pubDate],
-              pubTime >= outputFeedUpdated
-            ]
-          else []
-      newEntryLinks = HS.fromList $ map getItemLinkOrId newEntries
+selectEntries :: (MonadIO m) => FeedTask -> UTCTime -> [Atom.Entry] -> [Atom.Entry] -> m ([Atom.Entry])
+selectEntries task now entries newEntries = do
+  let newEntryLinks = HS.fromList $ map getItemLinkOrId newEntries
 
-  fmap ((,newEntries) . filter (not . (`HS.member` newEntryLinks) . getItemLinkOrId))
+  fmap (filter (not . (`HS.member` newEntryLinks) . getItemLinkOrId))
     . select now
     $ filter (isOldEnough now) entries
   where
@@ -321,6 +314,15 @@ selectEntries task outputFeedUpdated now entries = do
                   if count < maxAllowed
                     then ((rem - 1, HM.insert domain (count + 1) counts), e : acc)
                     else ((rem, counts), acc)
+
+computeNewEntries :: Bool -> Maybe Atom.Feed -> Either a Atom.Feed -> [Atom.Entry]
+computeNewEntries passthroughNewEntries mSourceFeed eCachedFeed
+  | passthroughNewEntries,
+    Just sourceFeed <- mSourceFeed,
+    Right cachedFeed <- eCachedFeed =
+      let cachedFeedLinks = Set.fromList $ map getItemLinkOrId $ Atom.feedEntries cachedFeed
+       in filter (not . (`Set.member` cachedFeedLinks) . getItemLinkOrId) $ Atom.feedEntries sourceFeed
+  | otherwise = []
 
 mkUuidUrn :: (MonadIO m) => m T.Text
 mkUuidUrn = T.pack . ("urn:uuid:" <>) . show <$> liftIO UUID.nextRandom

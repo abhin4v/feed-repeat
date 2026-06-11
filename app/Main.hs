@@ -149,7 +149,7 @@ migrateCacheFile cacheDir tasks = do
           newFileExists <- doesFileExist newFileName
           if newFileExists
             then return True
-            else do
+            else
               try (copyFile oldFileName newFileName) >>= \case
                 Left (e :: IOException) -> do
                   logWarnIO $ "Cache migration failed for " <> oldFileName <> ": " <> displayException e

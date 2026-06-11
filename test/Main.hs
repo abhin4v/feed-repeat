@@ -258,9 +258,8 @@ main = hspec $ do
 
   describe "selectEntries" $ do
     it "returns empty list when entries list is empty" $ do
-      (repeated, new) <- selectEntries (mkTask 0 3 Nothing) epoch farFutureNow []
+      repeated <- selectEntries (mkTask 0 3 Nothing) farFutureNow [] []
       length repeated `shouldBe` 0
-      length new `shouldBe` 0
 
     it "returns at most n entries" $ do
       let entry1 =
@@ -276,7 +275,7 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://example.com/3"]
               }
           entries = [entry1, entry2, entry3]
-      (repeated, _) <- selectEntries (mkTask 1 365 Nothing) epoch farFutureNow entries
+      repeated <- selectEntries (mkTask 1 365 Nothing) farFutureNow entries []
       length repeated `shouldSatisfy` (<= 1)
 
     it "filters out entries newer than minimum age" $ do
@@ -289,7 +288,7 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://example.com/new"]
               }
           entries = [oldEntry, newEntry]
-      (repeated, _) <- selectEntries (mkTask 1 3 Nothing) epoch farFutureNow entries
+      repeated <- selectEntries (mkTask 1 3 Nothing) farFutureNow entries []
       case repeated of
         [entry] -> Atom.entryId entry `shouldBe` "id1"
         _ -> expectationFailure $ "Expected exactly 1 entry, got " <> show (length repeated)
@@ -308,7 +307,7 @@ main = hspec $ do
               { Atom.entryLinks = [Atom.nullLink "http://other.com/1"]
               }
           entries = [entry1, entry2, entry3]
-      (repeated, _) <- selectEntries (mkTask 3 0 (Just 1)) epoch farFutureNow entries
+      repeated <- selectEntries (mkTask 3 0 (Just 1)) farFutureNow entries []
       length repeated `shouldBe` 2
       let domains =
             mapMaybe (listToMaybe . Atom.entryLinks >=> extractDomain . Atom.linkHref) repeated
@@ -708,73 +707,87 @@ main = hspec $ do
                   _ -> expectationFailure "No alternate link found"
           _ -> expectationFailure "No entries found"
 
-  describe "selectEntries passthroughNewEntries" $ do
-    let mkEntry eid published =
-          (Atom.nullEntry eid (Atom.TextString eid) published)
-            { Atom.entryLinks = [Atom.nullLink $ "http://example.com/" <> eid],
-              Atom.entryPublished = Just published
+  describe "selectEntries with new entry deduplication" $ do
+    let mkEntry eid =
+          (Atom.nullEntry eid (Atom.TextString eid) "2020-01-01T10:00:00Z")
+            { Atom.entryLinks = [Atom.nullLink $ "http://example.com/" <> eid]
             }
 
-    it "includes entries newer than outputFeedUpdated when enabled" $ do
-      let oldEntry = mkEntry "old" "2020-01-01T10:00:00Z"
-          newEntry = mkEntry "new" "2025-11-25T10:00:00Z"
-          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-          task = (mkTask 1 365 Nothing) {passthroughNewEntries = True}
-      (_, new) <- selectEntries task outputUpdated farFutureNow [oldEntry, newEntry]
-      map Atom.entryId new `shouldSatisfy` elem "new"
+    it "excludes new entries from repeated selection" $ do
+      let eligible = mkEntry "eligible"
+          newEntry = mkEntry "new"
+      result <- selectEntries (mkTask 2 0 Nothing) farFutureNow [eligible, newEntry] [newEntry]
+      map Atom.entryId result `shouldBe` ["eligible"]
 
-    it "does not passthrough entries older than outputFeedUpdated when enabled" $ do
-      let oldEntry = mkEntry "old" "2024-01-01T10:00:00Z"
-          task = (mkTask 0 0 Nothing) {passthroughNewEntries = True}
-          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated farFutureNow [oldEntry]
-      length (repeated <> new) `shouldBe` 0
+    it "returns all eligible entries when newEntries is empty" $ do
+      let e1 = mkEntry "e1"
+          e2 = mkEntry "e2"
+      result <- selectEntries (mkTask 2 0 Nothing) farFutureNow [e1, e2] []
+      length result `shouldBe` 2
 
-    it "does not passthrough new entries when feature is disabled" $ do
-      let newEntry = mkEntry "new" "2025-11-25T10:00:00Z"
-          task = (mkTask 0 365 Nothing) {passthroughNewEntries = False}
-          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated farFutureNow [newEntry]
-      length (repeated <> new) `shouldBe` 0
+    it "deduplicates entries appearing in both entries and newEntries" $ do
+      let entry = mkEntry "dup"
+      result <- selectEntries (mkTask 1 0 Nothing) farFutureNow [entry] [entry]
+      length result `shouldBe` 0
 
-    it "ignores entries without published date when enabled" $ do
-      let noDateEntry =
-            (Atom.nullEntry "no-date" (Atom.TextString "no-date") "2025-11-25T10:00:00Z")
-              { Atom.entryLinks = [Atom.nullLink "http://example.com/no-date"],
-                Atom.entryPublished = Nothing
+  describe "computeNewEntries" $ do
+    let mkEntry eid link =
+          (Atom.nullEntry eid (Atom.TextString eid) "2025-01-01T00:00:00Z")
+            { Atom.entryLinks = [Atom.nullLink link]
+            }
+        mkFeed entries =
+          (Atom.nullFeed "test-id" (Atom.TextString "Test") "2025-01-01T00:00:00Z")
+            { Atom.feedEntries = entries
+            }
+
+    it "returns empty when passthroughNewEntries is False" $ do
+      let source = mkFeed [mkEntry "1" "http://example.com/1"]
+          cached = mkFeed []
+      computeNewEntries False (Just source) (Right cached) `shouldSatisfy` null
+
+    it "returns empty when there is no source feed" $ do
+      computeNewEntries True Nothing (Right (mkFeed [])) `shouldSatisfy` null
+
+    it "returns empty when cache is missing" $ do
+      let source = mkFeed [mkEntry "1" "http://example.com/1"]
+      computeNewEntries True (Just source) (Left ()) `shouldSatisfy` null
+
+    it "returns entries not present in cache" $ do
+      let source = mkFeed [mkEntry "old" "http://example.com/old", mkEntry "new" "http://example.com/new"]
+          cached = mkFeed [mkEntry "old" "http://example.com/old"]
+          result = computeNewEntries True (Just source) (Right cached)
+      map Atom.entryId result `shouldBe` ["new"]
+
+    it "returns empty when all source entries are cached" $ do
+      let entry = mkEntry "e1" "http://example.com/1"
+          source = mkFeed [entry]
+          cached = mkFeed [entry]
+      computeNewEntries True (Just source) (Right cached) `shouldSatisfy` null
+
+    it "returns all entries when cache is empty" $ do
+      let e1 = mkEntry "e1" "http://example.com/1"
+          e2 = mkEntry "e2" "http://example.com/2"
+          source = mkFeed [e1, e2]
+          cached = mkFeed []
+          result = computeNewEntries True (Just source) (Right cached)
+      length result `shouldBe` 2
+
+    it "deduplicates by link, not by id" $ do
+      let cachedEntry = mkEntry "old-id" "http://example.com/1"
+          sourceEntry = mkEntry "new-id" "http://example.com/1"
+          source = mkFeed [sourceEntry]
+          cached = mkFeed [cachedEntry]
+      computeNewEntries True (Just source) (Right cached) `shouldSatisfy` null
+
+    it "uses entry id as fallback when entry has no link" $ do
+      let noLink eid =
+            (Atom.nullEntry eid (Atom.TextString eid) "2025-01-01T00:00:00Z")
+              { Atom.entryLinks = []
               }
-          task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
-          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated farFutureNow [noDateEntry]
-      length (repeated <> new) `shouldBe` 0
-
-    it "ignores entries with unparseable published date when enabled" $ do
-      let badDateEntry =
-            (Atom.nullEntry "bad-date" (Atom.TextString "bad-date") "2025-11-25T10:00:00Z")
-              { Atom.entryLinks = [Atom.nullLink "http://example.com/bad-date"],
-                Atom.entryPublished = Just "not-a-date"
-              }
-          task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
-          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated farFutureNow [badDateEntry]
-      length (repeated <> new) `shouldBe` 0
-
-    it "deduplicates entries appearing in both passthrough and repeated selection" $ do
-      let entry = mkEntry "dup" "2025-06-01T10:00:00Z"
-          task = (mkTask 1 0 Nothing) {passthroughNewEntries = True}
-          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated farFutureNow [entry]
-      length (repeated <> new) `shouldBe` 1
-
-    it "passes through multiple new entries when enabled" $ do
-      let new1 = mkEntry "new1" "2025-11-25T10:00:00Z"
-          new2 = mkEntry "new2" "2025-11-26T10:00:00Z"
-          new3 = mkEntry "new3" "2025-11-27T10:00:00Z"
-          task = (mkTask 0 365 Nothing) {passthroughNewEntries = True}
-          outputUpdated = parseUTC "2025-01-01T00:00:00Z"
-      (repeated, new) <- selectEntries task outputUpdated farFutureNow [new1, new2, new3]
-      length repeated `shouldBe` 0
-      sort (map Atom.entryId new) `shouldBe` ["new1", "new2", "new3"]
+          source = mkFeed [noLink "e1", noLink "e2"]
+          cached = mkFeed [noLink "e1"]
+          result = computeNewEntries True (Just source) (Right cached)
+      map Atom.entryId result `shouldBe` ["e2"]
 
   describe "SSRF protection" ssrfSpec
 
@@ -801,7 +814,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ fst <$> selectEntries task epoch farFutureNow entries
+            selections <- replicateM 10 $ selectEntries task farFutureNow entries []
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 
@@ -824,7 +837,7 @@ main = hspec $ do
         if null entries
           then discard
           else do
-            selections <- replicateM 10 $ fst <$> selectEntries (task {selectionAlpha = newNonNegative' 0}) epoch farFutureNow entries
+            selections <- replicateM 10 $ selectEntries (task {selectionAlpha = newNonNegative' 0}) farFutureNow entries []
             let selectedIds = [Atom.entryId e | sel <- selections, e <- sel]
                 selectedYears = map (read . T.unpack . T.takeWhile (/= '_')) selectedIds
 
