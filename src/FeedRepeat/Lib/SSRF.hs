@@ -7,28 +7,39 @@ import Data.Word (Word32, Word8)
 import Net.IPv4 qualified as IPv4
 import Network.Socket (AddrInfo (..), SockAddr (..), defaultHints, getAddrInfo, hostAddressToTuple)
 import Network.URI qualified as URI
+import System.Timeout (timeout)
+
+dnsTimeoutMicroseconds :: Int
+dnsTimeoutMicroseconds = 10_000_000 -- 10 seconds
 
 -- | SSRF check: resolves the host via DNS and checks
 -- resolved IPs against private/reserved address ranges.
 -- Returns False if the host is private, DNS fails, or the URL is invalid.
 checkPublicUrl :: String -> IO Bool
 checkPublicUrl url = case URI.parseURI url >>= URI.uriAuthority of
-  Nothing -> return False
+  Nothing -> return False -- invalid URL
   Just auth -> do
     let host = URI.uriRegName auth
     if isPrivateName host
-      then return False
-      else do
-        results <- try $ getAddrInfo (Just defaultHints) (Just host) Nothing
-        case results of
-          Left (_ :: SomeException) -> return False
-          Right [] -> return False
-          Right addrs -> return $ not $ any (isPrivateSockAddr . addrAddress) addrs
+      then return False -- hostname is a private name (localhost etc)
+      else
+        timeout dnsTimeoutMicroseconds (try $ getAddrInfo (Just defaultHints) (Just host) Nothing) >>= \case
+          Nothing -> return False -- DNS lookup timed out
+          Just (Left (_ :: SomeException)) -> return False -- DNS lookup failed
+          Just (Right []) -> return False -- no addresses resolved
+          Just (Right addrs) -> return $ not $ any (isPrivateSockAddr . addrAddress) addrs
 
 isPrivateName :: String -> Bool
 isPrivateName host =
-  let lower = map toLower host
-   in lower `elem` ["localhost", "localhost.localdomain", "localhost6", "ip6-localhost", "[::1]"]
+  map toLower host
+    `elem` [ "localhost",
+             "localhost.localdomain",
+             "localhost6",
+             "ip6-localhost",
+             "[::1]",
+             "127.0.0.1",
+             "0.0.0.0"
+           ]
 
 isPrivateSockAddr :: SockAddr -> Bool
 isPrivateSockAddr = \case
