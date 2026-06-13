@@ -28,11 +28,12 @@ A Haskell tool that repeats entries from RSS/Atom feeds into new feeds. It fetch
 - Uses exponential weighting to prioritize older entries.
 - Caches fetched feeds to handle source feed unavailability.
 - Filters entries by minimum age to avoid repeating recent content.
+- Allows passthrough of new entries via a config.
 - Supports RSS, Atom and RDF feed formats.
 
 ## Installation
 
-`feed-repeat` is available as statically-linked binaries for AArch64 and AMD64 architectures in the releases. It is also available as a [Docker image](https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat) in the GitHub Container Repo.
+feed-repeat is available as statically-linked binaries for AArch64 and AMD64 architectures in the [releases](https://github.com/abhin4v/feed-repeat/releases/latest). It is also available as a [Docker image](https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat) in the GitHub Container Repo.
 
 ## Prerequisites
 
@@ -54,6 +55,7 @@ cd feed-repeat
 ### Build with Cabal
 
 ```bash
+cabal update
 cabal build
 ```
 
@@ -62,7 +64,7 @@ cabal build
 Enter the Nix shell:
 
 ```bash
-nix-shell
+nix-shell --arg devTools false
 ```
 
 Run the scripts available in Nix shell:
@@ -73,7 +75,7 @@ build
 
 # Build a static binary
 build-static x86_64
-# or build-static aarch64
+build-static aarch64
 
 # Run the tool with example config
 run
@@ -175,7 +177,7 @@ For non-NixOS systems, a systemd service file (`configs/feed-repeat.service`) is
     cabal install --installdir=/tmp --install-method=copy --overwrite-policy=always
     sudo install -D -m 0755 /tmp/feed-repeat /usr/local/bin/feed-repeat
     ```
-    Or use the binaries available for download.
+    Or use the binaries available for [download](https://github.com/abhin4v/feed-repeat/releases/latest).
 
 7. Install the timer unit:
 
@@ -286,7 +288,7 @@ feed-repeat --config config.yaml --output-dir ./output --cache-dir ./cache
 - `--config FILE`: Path to YAML configuration file containing feed sources (required).
 - `--output-dir DIR`: Directory where output Atom files will be written (required).
 - `--cache-dir DIR`: Directory where cached Atom files will be stored (default: current directory).
-- `--user-agent STRING`: User-Agent header to send in HTTP requests (default: 'feed-repeat/<version>').
+- `--user-agent STRING`: User-Agent header to send in HTTP requests (default: feed-repeat/$version).
 - `--validate`: Only validate the config file and exit.
 - `--verbose`: Enable all logging.
 - `--quiet`: Enable only warning and error logging.
@@ -325,8 +327,10 @@ See [CHANGELOG](CHANGELOG.md).
 
 ## Contributing
 
-I consider this is a done software. Maybe some day when [JSONFeed](https://www.jsonfeed.org/) gets popular, I'd consider adding support for it. Other than that, I don't foresee adding any new features. I'll keep doing bugfixes, security fixes and dependency upgrades.
+I consider feed-repeat a [Finished Software](https://rosswintle.uk/2025/10/software-can-be-finished/). Maybe some day when [JSONFeed](https://www.jsonfeed.org/) gets popular, I'd consider adding support for it. Other than that, I don't foresee adding any new features. I'll keep doing bugfixes, security fixes and dependency upgrades.
 
 Please feel free to create an issue if you find a bug. I'm not inclined to accept pull requests unless there is a very compelling reason.
 
-Disclaimer: This is a personal project. The views, code, and opinions expressed here are my own and do not represent those of my current or past employers.
+## Disclaimer
+
+This is a personal project. The views, code, and opinions expressed here are my own and do not represent those of my current or past employers.

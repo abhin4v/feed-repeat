@@ -130,12 +130,14 @@ post</a> describes the motivation behind it.</p>
 <li>Caches fetched feeds to handle source feed unavailability.</li>
 <li>Filters entries by minimum age to avoid repeating recent
 content.</li>
+<li>Allows passthrough of new entries via a config.</li>
 <li>Supports RSS, Atom and RDF feed formats.</li>
 </ul>
 <h2 id="installation">Installation</h2>
-<p><code>feed-repeat</code> is available as statically-linked binaries
-for AArch64 and AMD64 architectures in the releases. It is also
-available as a <a
+<p>feed-repeat is available as statically-linked binaries for AArch64
+and AMD64 architectures in the <a
+href="https://github.com/abhin4v/feed-repeat/releases/latest">releases</a>.
+It is also available as a <a
 href="https://github.com/abhin4v/feed-repeat/pkgs/container/feed-repeat">Docker
 image</a> in the GitHub Container Repo.</p>
 <h2 id="prerequisites">Prerequisites</h2>
@@ -156,11 +158,12 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> feed-repeat</span></code></pre></div>
 <h3 id="build-with-cabal">Build with Cabal</h3>
 <div class="sourceCode" id="cb2"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> build</span></code></pre></div>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> update</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> build</span></code></pre></div>
 <h3 id="build-with-nix">Build with Nix</h3>
 <p>Enter the Nix shell:</p>
 <div class="sourceCode" id="cb3"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nix-shell</span></span></code></pre></div>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nix-shell</span> <span class="at">--arg</span> devTools false</span></code></pre></div>
 <p>Run the scripts available in Nix shell:</p>
 <div class="sourceCode" id="cb4"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build the project</span></span>
@@ -168,7 +171,7 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a static binary</span></span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="ex">build-static</span> x86_64</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co"># or build-static aarch64</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="ex">build-static</span> aarch64</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Run the tool with example config</span></span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="ex">run</span></span></code></pre></div>
@@ -251,7 +254,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href=
 <div class="sourceCode" id="cb11"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cabal</span> install <span class="at">--installdir</span><span class="op">=</span>/tmp <span class="at">--install-method</span><span class="op">=</span>copy <span class="at">--overwrite-policy</span><span class="op">=</span>always</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> install <span class="at">-D</span> <span class="at">-m</span> 0755 /tmp/feed-repeat /usr/local/bin/feed-repeat</span></code></pre></div>
-<p>Or use the binaries available for download.</p></li>
+<p>Or use the binaries available for <a
+href="https://github.com/abhin4v/feed-repeat/releases/latest">download</a>.</p></li>
 <li><p>Install the timer unit:</p>
 <div class="sourceCode" id="cb12"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> cp configs/feed-repeat.timer /etc/systemd/system/</span></code></pre></div></li>
@@ -350,7 +354,7 @@ will be written (required).</li>
 <li><code>--cache-dir DIR</code>: Directory where cached Atom files will
 be stored (default: current directory).</li>
 <li><code>--user-agent STRING</code>: User-Agent header to send in HTTP
-requests (default: ‘feed-repeat/<version>’).</li>
+requests (default: feed-repeat/$version).</li>
 <li><code>--validate</code>: Only validate the config file and
 exit.</li>
 <li><code>--verbose</code>: Enable all logging.</li>
@@ -381,7 +385,9 @@ meanings.</p>
 <h2 id="changelog">Changelog</h2>
 <p>See <a href="CHANGELOG.html">CHANGELOG</a>.</p>
 <h2 id="contributing">Contributing</h2>
-<p>I consider this is a done software. Maybe some day when <a
+<p>I consider feed-repeat a <a
+href="https://rosswintle.uk/2025/10/software-can-be-finished/">Finished
+Software</a>. Maybe some day when <a
 href="https://www.jsonfeed.org/">JSONFeed</a> gets popular, I’d consider
 adding support for it. Other than that, I don’t foresee adding any new
 features. I’ll keep doing bugfixes, security fixes and dependency
@@ -389,9 +395,10 @@ upgrades.</p>
 <p>Please feel free to create an issue if you find a bug. I’m not
 inclined to accept pull requests unless there is a very compelling
 reason.</p>
-<p>Disclaimer: This is a personal project. The views, code, and opinions
-expressed here are my own and do not represent those of my current or
-past employers.</p>
+<h2 id="disclaimer">Disclaimer</h2>
+<p>This is a personal project. The views, code, and opinions expressed
+here are my own and do not represent those of my current or past
+employers.</p>
 <footer>Made with <a href="https://www.haskell.org/">Haskell</a> by <a href="https://abhinavsarkar.net/">Abhinav Sarkar</a></footer>
 </body>
 </html>
