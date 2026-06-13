@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-06-13
 
 ### Added
 - Passthrough of new entries from source feed to output feed via `passthroughNewEntries` config option.
@@ -50,5 +50,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Docker image running as non-root user (UID 1000).
 - Example web server configs for nginx, Apache, and Caddy with HSTS and security headers.
 
-[1.1.0]: https://github.com/abhin4v/feed-repeat/compare/1.0.0...main
+[1.1.0]: https://github.com/abhin4v/feed-repeat/releases/tag/1.1.0
 [1.0.0]: https://github.com/abhin4v/feed-repeat/releases/tag/1.0.0

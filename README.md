@@ -286,7 +286,7 @@ feed-repeat --config config.yaml --output-dir ./output --cache-dir ./cache
 - `--config FILE`: Path to YAML configuration file containing feed sources (required).
 - `--output-dir DIR`: Directory where output Atom files will be written (required).
 - `--cache-dir DIR`: Directory where cached Atom files will be stored (default: current directory).
-- `--user-agent STRING`: User-Agent header to send in HTTP requests (default: 'feed-repeat').
+- `--user-agent STRING`: User-Agent header to send in HTTP requests (default: 'feed-repeat/<version>').
 - `--validate`: Only validate the config file and exit.
 - `--verbose`: Enable all logging.
 - `--quiet`: Enable only warning and error logging.
