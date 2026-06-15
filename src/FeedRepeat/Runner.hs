@@ -35,9 +35,11 @@ import Control.Retry qualified as Retry
 import Crypto.Hash (SHA256)
 import Crypto.Hash qualified as Crypto
 import Data.Aeson qualified as Aeson
+import Data.Bifunctor (second)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 import Data.ByteString.Lazy qualified as LBS
+import Data.Either (isRight)
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Text qualified as T
@@ -47,7 +49,7 @@ import Data.Text.Lazy.Encoding qualified as TEL
 import Data.Time (NominalDiffTime, UTCTime (..))
 import Data.Time qualified as Time
 import Data.Time.Format.ISO8601 (iso8601Show)
-import Data.Tuple.Extra (firstM)
+import Data.Tuple.Extra (firstM, uncurry3)
 import FeedRepeat.Lib
 import GHC.Generics (Generic)
 import Network.HTTP.Client qualified as HTTP
@@ -119,25 +121,38 @@ runTasksForSource tasks sourceFeedUrl = do
           let updated = parseDate $ Atom.feedUpdated outputFeed
            in fromMaybe ancientTime updated
 
-  -- skip run or get run task for tasks
-  actions <- fmap catMaybes . forM (zip3 tasks mOutputFeeds outputFeedsUpdated) $
-    \(task, mOutputFeed, outputFeedUpdated) -> do
+  -- skip run or get run task action for tasks
+  (actions, cached) <-
+    fmap (second and . unzip . catMaybes)
+      . forM (zip3 tasks mOutputFeeds outputFeedsUpdated)
+      . uncurry3
+      $ getTaskAction env
+
+  -- run actions
+  unless (null actions) $ do
+    let metadataFilePath = env.options.cacheDir </> sha256Hash sourceFeedUrl.toString <.> "json"
+    metadata <- parseFeedMetadata' metadataFilePath
+    mSourceFeedAndMetadata <- mFetchFeed sourceFeedUrl metadata cached
+    forM_ (snd <$> mSourceFeedAndMetadata) $ saveFeedMetadata' metadataFilePath
+    traverse_ ($ fst <$> mSourceFeedAndMetadata) actions
+  where
+    getTaskAction env task mOutputFeed outputFeedUpdated = do
       let minRunGapSeconds = fromIntegral task.minRunGapDays.toNum * Time.nominalDay - timerTolerance
       if Time.diffUTCTime env.startTime outputFeedUpdated < minRunGapSeconds
         then do
           logInfo $ "Skipping run for URL: " <> sourceFeedUrl.redacted
           return Nothing
-        else return $ Just $ \mSourceFeed ->
-          runTask task mSourceFeed mOutputFeed `catchError` (logError . show)
+        else do
+          cachePath <- cacheFilePath task
+          eCachedFeed <-
+            (Right <$> parseAtomFile cachePath) `catchError` \err -> do
+              (case err of IOError _ -> logDebug; _ -> logWarn) $
+                "Unable to parse cache file " <> cachePath <> ": " <> show err
+              return $ Left err
 
-  -- run tasks
-  unless (null actions) $ do
-    let metadataFilePath = env.options.cacheDir </> sha256Hash sourceFeedUrl.toString <.> "json"
-    metadata <- parseFeedMetadata' metadataFilePath
-    mSourceFeedAndMetadata <- mFetchFeed sourceFeedUrl metadata
-    forM_ (snd <$> mSourceFeedAndMetadata) $ saveFeedMetadata' metadataFilePath
-    traverse_ ($ fst <$> mSourceFeedAndMetadata) actions
-  where
+          return $ Just $ (,isRight eCachedFeed) $ \mSourceFeed ->
+            runTask task mSourceFeed eCachedFeed mOutputFeed `catchError` (logError . show)
+
     parseFeedMetadata' metadataFilePath =
       parseFeedMetadata metadataFilePath
         `catchError` \err -> do
@@ -152,8 +167,8 @@ runTasksForSource tasks sourceFeedUrl = do
         `catchError` \err ->
           logWarn $ "Failed to save feed metadata: " <> metadataFilePath <> show err
 
-    mFetchFeed url metadata =
-      (Just <$> fetchFeed url metadata) `catchError` \err -> do
+    mFetchFeed url metadata cached =
+      (Just <$> fetchFeed url metadata cached) `catchError` \err -> do
         case err of
           FeedNotModifiedError -> logDebug $ "Feed not modified: " <> url.redacted <> ", using cached"
           FeedTooManyRequestsError -> logDebug $ "Feed too many requests: " <> url.redacted <> ", using cached"
@@ -175,7 +190,7 @@ runTasksForSource tasks sourceFeedUrl = do
             logWarn $ "Corrupted output feed: " <> show err
             return Nothing
 
-    runTask task sourceFeed outputFeed = do
+    runTask task mSourceFeed eCachedFeed mOutputFeed = do
       let url = task.sourceFeedUrl
       logDebug $ "Processing: " <> url.redacted
       logDebug $
@@ -184,7 +199,7 @@ runTasksForSource tasks sourceFeedUrl = do
           <> (", minimumEntryAgeDays=" <> show task.minimumEntryAgeDays)
           <> (", minRunGapDays=" <> show task.minRunGapDays)
 
-      cacheSourceFeed task sourceFeed >>= processSourceFeed task outputFeed
+      cacheSourceFeed task mSourceFeed eCachedFeed >>= processSourceFeed task mOutputFeed
 
 processSourceFeed :: FeedTask -> Maybe Atom.Feed -> (Atom.Feed, [Atom.Entry]) -> App ()
 processSourceFeed task mOutputFeed (sourceFeed, newEntries') = do
@@ -249,17 +264,15 @@ cacheFileName :: URL -> String -> String
 cacheFileName url outputFilename =
   sha256Hash (url.toString <> ['\0'] <> outputFilename) <> ".atom"
 
-cacheSourceFeed :: FeedTask -> Maybe Atom.Feed -> App (Atom.Feed, [Atom.Entry])
-cacheSourceFeed task mSourceFeed = do
+cacheFilePath :: FeedTask -> App FilePath
+cacheFilePath task = do
   env <- ask
-  let url = task.sourceFeedUrl
-  let cacheFilePath = env.options.cacheDir </> cacheFileName url task.outputFilename
+  return $ env.options.cacheDir </> cacheFileName task.sourceFeedUrl task.outputFilename
 
-  eCachedFeed <-
-    (Right <$> parseAtomFile cacheFilePath) `catchError` \err -> do
-      (case err of IOError _ -> logDebug; _ -> logWarn) $
-        "Unable to parse cache file " <> cacheFilePath <> ": " <> show err
-      return $ Left err
+cacheSourceFeed :: FeedTask -> Maybe Atom.Feed -> Either AppError Atom.Feed -> App (Atom.Feed, [Atom.Entry])
+cacheSourceFeed task mSourceFeed eCachedFeed = do
+  let url = task.sourceFeedUrl
+  cachePath <- cacheFilePath task
 
   mergedFeed <-
     if
@@ -276,17 +289,17 @@ cacheSourceFeed task mSourceFeed = do
     case Feed.textFeed (Feed.AtomFeed mergedFeed) of
       Nothing -> logWarn $ "Failed to export feed for URL: " <> url.redacted
       Just txt ->
-        (writeFile cacheFilePath txt >> logDebug ("Cached to: " <> cacheFilePath))
+        (writeFile cachePath txt >> logDebug ("Cached to: " <> cachePath))
           `catchError` (logWarn . ("Failed to write cache file: " <>) . show)
 
   return (mergedFeed, computeNewEntries task.passthroughNewEntries mSourceFeed eCachedFeed)
 
-fetchFeed :: URL -> FeedMetadata -> App (Atom.Feed, FeedMetadata)
-fetchFeed url metadata = do
+fetchFeed :: URL -> FeedMetadata -> Bool -> App (Atom.Feed, FeedMetadata)
+fetchFeed url metadata cached = do
   env <- ask
-  (feed, metadata) <- fetchAndParse env.startTime env.httpManager env.options.userAgent url.toString
+  (feed, metadata') <- fetchAndParse env.startTime env.httpManager env.options.userAgent url.toString
   logDebug $ "Fetched feed with " <> show (length $ Atom.feedEntries feed) <> " entries: " <> url.redacted
-  return (feed, metadata)
+  return (feed, metadata')
   where
     fetchAndParse now man userAgent =
       (HTTP.parseRequest >>> tryOrThrow HTTPError)
@@ -304,8 +317,8 @@ fetchFeed url metadata = do
           HTTP.requestHeaders =
             HTTP.requestHeaders request
               <> [(HTTP.hUserAgent, TE.encodeUtf8 userAgent)]
-              <> [(HTTP.hIfModifiedSince, TE.encodeUtf8 lastMod) | Just lastMod <- [metadata.lastModified]]
-              <> [(HTTP.hIfNoneMatch, TE.encodeUtf8 etag) | Just etag <- [metadata.etag]]
+              <> [(HTTP.hIfModifiedSince, TE.encodeUtf8 lastMod) | cached, Just lastMod <- [metadata.lastModified]]
+              <> [(HTTP.hIfNoneMatch, TE.encodeUtf8 etag) | cached, Just etag <- [metadata.etag]]
         }
 
     fetchWithRetry man req =
