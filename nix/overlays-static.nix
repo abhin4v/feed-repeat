@@ -27,6 +27,7 @@ in
         };
         buildHaskellPackages = prevHPackages.buildHaskellPackages.override (old: {
           ghc = final.haskell.packages.${compiler}.ghc;
+          buildHaskellPackages = final.haskell.packages.${compiler};
         });
       };
     }
