@@ -1,5 +1,6 @@
 {
   pkgs,
+  pkgsOrig,
   compiler,
   static,
   devTools,
@@ -90,13 +91,16 @@ let
         hlib.justStaticExecutables
         hlib.disableSharedLibraries
         hlib.enableDeadCodeElimination
+        (hlib.overrideCabal (old: {
+          buildTools = (old.buildTools or [ ]) ++ [ pkgsOrig.buildPackages.mold ];
+        }))
         (hlib.appendConfigureFlags [
           "--ghc-option=-fPIC"
           "--ghc-option=-split-sections"
-          "--ghc-option=-optl-fuse-ld=gold"
-          "--ld-option=-fuse-ld=gold"
+          "--ghc-option=-optl-fuse-ld=mold"
+          "--ld-option=-fuse-ld=mold"
           "--ld-option=-Wl,--gc-sections,--build-id,--icf=all"
-          "--with-ld=ld.gold"
+          "--with-ld=ld.mold"
           "--ghc-option=-optl=-static"
           "--ghc-option=-optl=-pthread"
           "--extra-lib-dirs=${libffi}/lib"

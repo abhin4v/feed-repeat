@@ -10,6 +10,7 @@
   (final: prev: {
     feed-repeat = import ./packages.nix {
       pkgs = if static then final.pkgsMusl else final;
+      pkgsOrig = final;
       inherit compiler static devTools;
     };
   })
