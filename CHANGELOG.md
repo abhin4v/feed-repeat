@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - Unreleased
+
+### Changed
+- Nix static builds now use the `mold` linker for faster builds.
+- Nix static build is now [GMP]-free.
+- GitHub Pages workflow now runs every six hours instead of daily.
+
+### Fixed
+- Crash caused by renaming the output file of an existing task.
+
 ## [1.1.0] - 2026-06-13
 
 ### Added
@@ -50,5 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Docker image running as non-root user (UID 1000).
 - Example web server configs for nginx, Apache, and Caddy with HSTS and security headers.
 
+[1.2.0]: https://github.com/abhin4v/feed-repeat/compare/1.1.0...main
 [1.1.0]: https://github.com/abhin4v/feed-repeat/releases/tag/1.1.0
 [1.0.0]: https://github.com/abhin4v/feed-repeat/releases/tag/1.0.0
+[GMP]: https://gmplib.org/

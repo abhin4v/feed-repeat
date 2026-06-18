@@ -42,6 +42,22 @@ file.</p>
 href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, and
 this project adheres to <a
 href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
+<h2 id="unreleased"><a
+href="https://github.com/abhin4v/feed-repeat/compare/1.1.0...main">1.2.0</a>
+- Unreleased</h2>
+<h3 id="changed">Changed</h3>
+<ul>
+<li>Nix static builds now use the <code>mold</code> linker for faster
+builds.</li>
+<li>Nix static build is now <a
+href="https://gmplib.org/">GMP</a>-free.</li>
+<li>GitHub Pages workflow now runs every six hours instead of
+daily.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li>Crash caused by renaming the output file of an existing task.</li>
+</ul>
 <h2 id="section"><a
 href="https://github.com/abhin4v/feed-repeat/releases/tag/1.1.0">1.1.0</a>
 - 2026-06-13</h2>
@@ -66,7 +82,7 @@ GitHub Pages.</li>
 <li><code>devTools</code> parameter throughout the Nix build files for
 faster Nix shell builds without HLS and other dev tools.</li>
 </ul>
-<h3 id="changed">Changed</h3>
+<h3 id="changed-1">Changed</h3>
 <ul>
 <li>Cache files are now per-task instead of per-source, enabling
 different <code>saveSourceFeedEntries</code> per task for the same
@@ -79,7 +95,7 @@ output.</li>
 <li>Minimum supported GHC version is now 9.10 (Cabal 3.12+), no support
 for GHC 9.6 and 9.8.</li>
 </ul>
-<h3 id="fixed">Fixed</h3>
+<h3 id="fixed-1">Fixed</h3>
 <ul>
 <li>HTTP retry for server errors — retry logic was previously broken
 because 5xx exceptions bypassed the retry loop. Server errors are now
