@@ -13,7 +13,7 @@ GitHub Actions publish your repeated feeds to GitHub Pages.
 
 ## Setting up the GitHub Action
 
-The workflow at [`.github/workflows/feeds.yml`](https://github.com/abhin4v/feed-repeat/blob/main/.github/workflows/feeds.yml) runs daily, on every push to `main`, and on manual dispatch. It needs permission to push to a `gh-pages` branch.
+The workflow at [`.github/workflows/feeds.yml`](https://github.com/abhin4v/feed-repeat/blob/main/.github/workflows/feeds.yml) runs every six hours, on every push to `main`, and on manual dispatch. It needs permission to push to a `gh-pages` branch.
 
 1. In your fork, go to **Settings → Actions → General**.
 2. Under **Workflow permissions**, select **Read and write permissions** and click **Save**. This lets the workflow create and update the `gh-pages` branch.
