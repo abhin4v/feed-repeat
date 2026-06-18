@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [1.2.0] - Unreleased
 
+### Added
+- CORS HTTP headers to example web server configs and the NixOS module.
+
 ### Changed
 - Nix static builds now use the `mold` linker for faster builds.
 - Nix static build is now [GMP]-free.

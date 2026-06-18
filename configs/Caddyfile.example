@@ -13,4 +13,7 @@ feeds.example.com {
 
     header Strict-Transport-Security "max-age=31536000"
     header X-Content-Type-Options "nosniff"
+    header Access-Control-Allow-Origin "*"
+    header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+    header Access-Control-Allow-Headers "*"
 }

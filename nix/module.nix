@@ -173,6 +173,9 @@ in
               add_header Cache-Control "public, max-age=21600";
               add_header Strict-Transport-Security "max-age=31536000" always;
               add_header X-Content-Type-Options "nosniff" always;
+              add_header Access-Control-Allow-Origin "*" always;
+              add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+              add_header Access-Control-Allow-Headers "*" always;
 
               # Deny access to dotfiles (e.g. .git, .htaccess) if any ever appear
               # in the output directory.
