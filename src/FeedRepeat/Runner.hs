@@ -4,6 +4,7 @@
 module FeedRepeat.Runner
   ( Options (..),
     Env (..),
+    App,
     runTasksForSource,
     cacheFileName,
     oldCacheFileName,
