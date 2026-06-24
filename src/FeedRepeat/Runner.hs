@@ -8,20 +8,16 @@ module FeedRepeat.Runner
     logErrorIO,
     migrateCacheFile,
     runAllTasks,
-    enableLogging,
     checkDuplicateOutputs,
   )
 where
 
 import Control.Arrow ((>>>))
-import Control.Exception (IOException, displayException, throwIO, toException, try)
+import Control.Exception (displayException, throwIO, toException)
 import Control.Monad (forM, forM_, unless, void, when, (>=>))
-import Control.Monad.Except (catchError, throwError)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Except (catchError, liftEither, throwError)
 import Control.Monad.Logger
-  ( LogLevel (..),
-    LogSource,
-    MonadLogger,
+  ( MonadLogger,
     logDebugN,
     logErrorN,
     logInfoN,
@@ -32,12 +28,13 @@ import Control.Monad.Reader (ask)
 import Control.Retry qualified as Retry
 import Crypto.Hash (SHA256)
 import Crypto.Hash qualified as Crypto
-import Data.Aeson qualified as Aeson
+import Data.Aeson qualified as Aeson (eitherDecode', encode)
 import Data.Bifunctor (second)
-import Data.ByteString qualified as BS
-import Data.ByteString.Char8 qualified as BSC
-import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString qualified as BS (length, null)
+import Data.ByteString.Char8 qualified as BSC (pack)
+import Data.ByteString.Lazy qualified as LBS (fromChunks, take, toStrict)
 import Data.Either (isRight)
+import Data.Either.Extra (mapLeft)
 import Data.Foldable (traverse_)
 import Data.List (nub, (\\))
 import Data.List.Extra (nubOrd)
@@ -55,25 +52,14 @@ import FeedRepeat.Types
 import Network.HTTP.Client qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Network.HTTP.Types.Header qualified as HTTP
-import System.Directory (copyFile, doesFileExist, removeFile, renameFile)
-import System.FilePath (takeDirectory, (<.>), (</>))
-import System.IO (hClose)
+import System.FilePath ((<.>), (</>))
 import System.IO.Error (illegalOperationErrorType, mkIOError)
-import System.IO.Temp (withTempFile)
-import System.Posix.Files
-  ( groupReadMode,
-    ownerReadMode,
-    ownerWriteMode,
-    setFileMode,
-    unionFileModes,
-  )
-import System.Posix.Types (FileMode)
 import Text.Atom.Feed qualified as Atom
 import Text.Feed.Export qualified as Feed
 import Text.Feed.Import qualified as Feed
 import Text.Feed.Query qualified as Feed
 import Text.Feed.Types qualified as Feed
-import Prelude hiding (writeFile)
+import Prelude hiding (appendFile, readFile, writeFile)
 
 requestTimeoutMicros :: Int
 requestTimeoutMicros = 30_000_000 -- 30 sec
@@ -84,13 +70,10 @@ timerTolerance = 5 * 60 -- 5 minutes tolerance for systemd timer imprecision
 maxBodySize :: Int
 maxBodySize = 10 * 1024 * 1024 -- 10 MB
 
-fileMode :: FileMode
-fileMode = foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]
-
 ancientTime :: UTCTime
 ancientTime = UTCTime (Time.fromGregorian 2000 1 1) 0
 
-runTasksForSource :: [FeedTask] -> URL -> App ()
+runTasksForSource :: (MonadApp m) => [FeedTask] -> URL -> m ()
 runTasksForSource tasks sourceFeedUrl = do
   env <- ask
 
@@ -184,7 +167,7 @@ runTasksForSource tasks sourceFeedUrl = do
 
       cacheSourceFeed task mSourceFeed eCachedFeed >>= processSourceFeed task mOutputFeed
 
-processSourceFeed :: FeedTask -> Maybe Atom.Feed -> (Atom.Feed, [Atom.Entry]) -> App ()
+processSourceFeed :: (MonadApp m) => FeedTask -> Maybe Atom.Feed -> (Atom.Feed, [Atom.Entry]) -> m ()
 processSourceFeed task mOutputFeed (sourceFeed, newEntries') = do
   -- merge source and output feeds
   mergedFeed <- case mOutputFeed of
@@ -232,7 +215,7 @@ processSourceFeed task mOutputFeed (sourceFeed, newEntries') = do
       content <-
         fromMaybeOrThrow (FeedRenderError url.redacted) . Feed.textFeed $ Feed.AtomFeed resultFeed
       outputPath <- outputFilePath task
-      writeFile outputPath content
+      writeFileText outputPath content
       logDebug $ "Wrote to: " <> outputPath
       logInfo $ "Processed " <> url.redacted <> " successfully"
   where
@@ -250,17 +233,17 @@ cacheFileName :: URL -> String -> String
 cacheFileName url outputFilename =
   sha256Hash (url.toString <> ['\0'] <> outputFilename) <> ".atom"
 
-cacheFilePath :: FeedTask -> App FilePath
+cacheFilePath :: (MonadApp m) => FeedTask -> m FilePath
 cacheFilePath task = do
   env <- ask
   return $ env.options.cacheDir </> cacheFileName task.sourceFeedUrl task.outputFilename
 
-outputFilePath :: FeedTask -> App FilePath
+outputFilePath :: (MonadApp m) => FeedTask -> m FilePath
 outputFilePath task = do
   env <- ask
   return $ env.options.outputDir </> task.outputFilename <> ".atom"
 
-cacheSourceFeed :: FeedTask -> Maybe Atom.Feed -> Either AppError Atom.Feed -> App (Atom.Feed, [Atom.Entry])
+cacheSourceFeed :: (MonadApp m) => FeedTask -> Maybe Atom.Feed -> Either AppError Atom.Feed -> m (Atom.Feed, [Atom.Entry])
 cacheSourceFeed task mSourceFeed eCachedFeed = do
   let url = task.sourceFeedUrl
   cachePath <- cacheFilePath task
@@ -280,12 +263,12 @@ cacheSourceFeed task mSourceFeed eCachedFeed = do
     case Feed.textFeed (Feed.AtomFeed mergedFeed) of
       Nothing -> logWarn $ "Failed to export feed for URL: " <> url.redacted
       Just txt ->
-        (writeFile cachePath txt >> logDebug ("Cached to: " <> cachePath))
+        (writeFileText cachePath txt >> logDebug ("Cached to: " <> cachePath))
           `catchError` (logWarn . ("Failed to write cache file: " <>) . show)
 
   return (mergedFeed, computeNewEntries task.passthroughNewEntries mSourceFeed eCachedFeed)
 
-fetchFeed :: URL -> FeedMetadata -> Bool -> App (Atom.Feed, FeedMetadata)
+fetchFeed :: (MonadApp m) => URL -> FeedMetadata -> Bool -> m (Atom.Feed, FeedMetadata)
 fetchFeed url metadata cached = do
   env <- ask
   (feed, metadata') <- fetchAndParse env.startTime env.httpManager env.options.userAgent url.toString
@@ -369,7 +352,7 @@ fetchFeed url metadata cached = do
           }
       )
 
-parseAtomFile :: FilePath -> App Atom.Feed
+parseAtomFile :: (MonadApp m) => FilePath -> m Atom.Feed
 parseAtomFile filePath = do
   feed <- readAndParse filePath
   case feed of
@@ -382,18 +365,19 @@ parseAtomFile filePath = do
   where
     readAndParse =
       readFile
-        >>> tryOrThrow IOError
-        >=> Feed.parseFeedString
+        >=> Feed.parseFeedSource
         >>> fromMaybeOrThrow (FeedParseError filePath)
 
-parseFeedMetadata :: FilePath -> App FeedMetadata
-parseFeedMetadata filePath = do
-  tryOrThrow IOError (Aeson.eitherDecodeFileStrict' filePath) >>= \case
-    Left err -> throwError $ FeedMetadataParseError filePath err
-    Right metadata -> return metadata
+parseFeedMetadata :: (MonadApp m) => FilePath -> m FeedMetadata
+parseFeedMetadata filePath =
+  readFile filePath
+    >>= ( Aeson.eitherDecode'
+            >>> mapLeft (FeedMetadataParseError filePath)
+            >>> liftEither
+        )
 
-saveFeedMetadata :: FilePath -> FeedMetadata -> App ()
-saveFeedMetadata filePath = Aeson.encode >>> writeFileBS filePath
+saveFeedMetadata :: (MonadApp m) => FilePath -> FeedMetadata -> m ()
+saveFeedMetadata filePath = Aeson.encode >>> writeFile filePath
 
 logInfoIO, logErrorIO :: String -> IO ()
 logInfoIO = runStdoutLoggingT . logInfo
@@ -405,58 +389,40 @@ logInfo = logInfoN . T.pack
 logWarn = logWarnN . T.pack
 logError = logErrorN . T.pack
 
-writeFile :: FilePath -> LT.Text -> App ()
-writeFile fp = TEL.encodeUtf8 >>> writeFileBS fp
+writeFileText :: (MonadApp m) => FilePath -> LT.Text -> m ()
+writeFileText fp = TEL.encodeUtf8 >>> writeFile fp
 
-writeFileBS :: FilePath -> LBS.ByteString -> App ()
-writeFileBS fp content = do
-  let dir = takeDirectory fp
-  tryOrThrow IOError $ withTempFile dir "feed-repeat-" $ \tmpFP tmpH -> do
-    LBS.hPutStr tmpH content
-    hClose tmpH
-    renameFile tmpFP fp
-    setFileMode fp fileMode
-
-migrateCacheFile :: FilePath -> [FeedTask] -> App ()
+migrateCacheFile :: (MonadApp m) => FilePath -> [FeedTask] -> m ()
 migrateCacheFile cacheDir tasks = do
   let sourceFeedUrls = nubOrd $ map sourceFeedUrl tasks
   forM_ sourceFeedUrls $ \url -> do
     let oldFileName = cacheDir </> oldCacheFileName url
         tasksWithSource = [t | t <- tasks, t.sourceFeedUrl == url]
-    liftIO (doesFileExist oldFileName) >>= \case
-      False -> return ()
-      True -> do
-        results <- forM tasksWithSource $ \task -> do
-          let newFileName = cacheDir </> cacheFileName task.sourceFeedUrl task.outputFilename
-          liftIO (doesFileExist newFileName) >>= \case
-            True -> return True
-            False ->
-              liftIO (try (copyFile oldFileName newFileName)) >>= \case
-                Left (e :: IOException) -> do
-                  logWarn $ "Cache migration failed for " <> oldFileName <> ": " <> displayException e
-                  return False
-                Right _ -> do
-                  logInfo $ "Migrated cache file: " <> oldFileName <> " to " <> newFileName
-                  return True
-        when (and results) $
-          liftIO (try (removeFile oldFileName)) >>= \case
-            Right () -> return ()
-            Left (e :: IOException) ->
-              logWarn $ "Failed to remove old cache file " <> oldFileName <> ": " <> displayException e
+    exists <- doesFileExist oldFileName
+    when exists $ do
+      results <- forM tasksWithSource $ \task -> do
+        let newFileName = cacheDir </> cacheFileName task.sourceFeedUrl task.outputFilename
+        doesFileExist newFileName >>= \case
+          True -> return True
+          False ->
+            ( copyFile oldFileName newFileName
+                >> logInfo ("Migrated cache file: " <> oldFileName <> " to " <> newFileName)
+                >> return True
+            )
+              `catchError` \(IOError e) -> do
+                logWarn $ "Cache migration failed for " <> oldFileName <> ": " <> displayException e
+                return False
+      when (and results) $
+        removeFile oldFileName `catchError` \(IOError e) ->
+          logWarn $ "Failed to remove old cache file " <> oldFileName <> ": " <> displayException e
 
-runAllTasks :: [FeedTask] -> App ()
+runAllTasks :: (MonadApp m) => [FeedTask] -> m ()
 runAllTasks tasks = do
   env <- ask
   migrateCacheFile env.options.cacheDir tasks
   forM_ (nubOrd $ map sourceFeedUrl tasks) $ \url ->
     runTasksForSource (filter ((== url) . sourceFeedUrl) tasks) url
       `catchError` (logError . show)
-
-enableLogging :: Options -> LogSource -> LogLevel -> Bool
-enableLogging opts _ level
-  | opts.quiet = level >= LevelWarn
-  | opts.verbose = True
-  | otherwise = level >= LevelInfo
 
 checkDuplicateOutputs :: [FeedTask] -> IO [FeedTask]
 checkDuplicateOutputs tasks =

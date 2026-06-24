@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module FeedRepeat.Types
   ( URL (..),
@@ -13,15 +14,24 @@ module FeedRepeat.Types
     Env (..),
     App,
     FeedMetadata (..),
+    MonadFS (..),
+    MonadApp,
+    tryOrThrow,
+    runApp,
+    enableLogging,
+    fileMode,
   )
 where
 
-import Control.Exception (IOException, displayException)
-import Control.Monad.Except (ExceptT)
-import Control.Monad.Logger (LoggingT)
-import Control.Monad.Reader (ReaderT)
+import Control.Arrow ((>>>))
+import Control.Exception (Exception, IOException, displayException, try)
+import Control.Monad.Except (ExceptT, MonadError, runExceptT, throwError)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Logger (LogLevel (..), LogSource, LoggingT, MonadLogger, filterLogger, runStdoutLoggingT)
+import Control.Monad.Reader (MonadReader, ReaderT, runReaderT)
 import Data.Aeson ((.!=), (.:), (.:?))
 import Data.Aeson qualified as Aeson
+import Data.ByteString.Lazy qualified as LBS
 import Data.Hashable (Hashable (..))
 import Data.Scientific qualified as Scientific
 import Data.Text qualified as T
@@ -29,6 +39,18 @@ import Data.Time (UTCTime)
 import GHC.Generics (Generic)
 import GHC.Records (HasField (..))
 import Network.HTTP.Client qualified as HTTP
+import System.Directory qualified as Dir
+import System.FilePath (takeDirectory)
+import System.IO (hClose)
+import System.IO.Temp (withTempFile)
+import System.Posix.Files
+  ( groupReadMode,
+    ownerReadMode,
+    ownerWriteMode,
+    setFileMode,
+    unionFileModes,
+  )
+import System.Posix.Types (FileMode)
 
 data URL = URL {toString :: String, redacted :: String} deriving stock (Generic)
 
@@ -145,7 +167,61 @@ data Options = Options
 
 data Env = Env {options :: Options, httpManager :: HTTP.Manager, startTime :: UTCTime}
 
-type App a = ExceptT AppError (ReaderT Env (LoggingT IO)) a
-
 data FeedMetadata = FeedMetadata {etag :: Maybe T.Text, lastModified :: Maybe T.Text}
   deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
+
+class (MonadIO m) => MonadFS m where
+  doesFileExist :: FilePath -> m Bool
+  copyFile :: FilePath -> FilePath -> m ()
+  removeFile :: FilePath -> m ()
+  renameFile :: FilePath -> FilePath -> m ()
+  readFile :: FilePath -> m LBS.ByteString
+  writeFile :: FilePath -> LBS.ByteString -> m ()
+
+type MonadApp m = (MonadFS m, MonadReader Env m, MonadLogger m, MonadError AppError m, MonadFail m)
+
+newtype App a = App {runApp_ :: ExceptT AppError (ReaderT Env (LoggingT IO)) a}
+  deriving newtype
+    ( Functor,
+      Applicative,
+      Monad,
+      MonadError AppError,
+      MonadReader Env,
+      MonadIO,
+      MonadLogger,
+      MonadFail
+    )
+
+instance MonadFS App where
+  doesFileExist = tryOrThrow IOError . Dir.doesFileExist
+  copyFile from to = tryOrThrow IOError $ Dir.copyFile from to
+  removeFile = tryOrThrow IOError . Dir.removeFile
+  renameFile from to = tryOrThrow IOError $ Dir.renameFile from to
+  readFile = tryOrThrow IOError . LBS.readFile
+  writeFile fp content = tryOrThrow IOError $ do
+    let dir = takeDirectory fp
+    withTempFile dir "feed-repeat-" $ \tmpFP tmpH -> do
+      LBS.hPutStr tmpH content
+      hClose tmpH
+      Dir.renameFile tmpFP fp
+      setFileMode fp fileMode
+
+tryOrThrow :: (MonadIO m, Exception e1, MonadError e2 m) => (e1 -> e2) -> IO a -> m a
+tryOrThrow mkErr action = liftIO (try action) >>= either (throwError . mkErr) pure
+
+runApp :: Env -> App a -> IO (Either AppError a)
+runApp env =
+  runApp_
+    >>> runExceptT
+    >>> flip runReaderT env
+    >>> filterLogger (enableLogging env.options)
+    >>> runStdoutLoggingT
+
+enableLogging :: Options -> LogSource -> LogLevel -> Bool
+enableLogging opts _ level
+  | opts.quiet = level >= LevelWarn
+  | opts.verbose = True
+  | otherwise = level >= LevelInfo
+
+fileMode :: FileMode
+fileMode = foldr1 unionFileModes [ownerReadMode, ownerWriteMode, groupReadMode]

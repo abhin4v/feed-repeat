@@ -9,7 +9,6 @@ module FeedRepeat.Lib
     computeNewEntries,
     mkUuidUrn,
     parseDate,
-    tryOrThrow,
     fromMaybeOrThrow,
     extractDomain,
     getItemLinkOrId,
@@ -18,11 +17,11 @@ where
 
 import Control.Applicative (asum, (<|>))
 import Control.Arrow ((>>>))
-import Control.Exception (Exception, try)
 import Control.Monad (forM, (>=>))
 import Control.Monad.Except (MonadError, liftEither)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Either.Combinators (mapLeft, maybeToRight)
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class qualified as IOL (liftIO)
+import Data.Either.Combinators (maybeToRight)
 import Data.Function ((&))
 import Data.HashMap.Strict qualified as HM
 import Data.HashSet qualified as HS
@@ -48,7 +47,7 @@ import System.Random (randomRIO)
 import Text.Atom.Feed qualified as Atom
 import Text.Feed.Query qualified as Feed
 import Text.Feed.Types qualified as Feed
-import Prelude hiding (writeFile)
+import Prelude hiding (appendFile, readFile, writeFile)
 
 feedToAtom :: (MonadIO m, MonadError AppError m) => UTCTime -> URL -> Feed.Feed -> m Atom.Feed
 feedToAtom _ feedURL (Feed.AtomFeed af@Atom.Feed {feedLinks, feedEntries}) =
@@ -215,7 +214,7 @@ computeNewEntries passthroughNewEntries mSourceFeed eCachedFeed
   | otherwise = []
 
 mkUuidUrn :: (MonadIO m) => m T.Text
-mkUuidUrn = T.pack . ("urn:uuid:" <>) . show <$> liftIO UUID.nextRandom
+mkUuidUrn = T.pack . ("urn:uuid:" <>) . show <$> IOL.liftIO UUID.nextRandom
 
 parseDate :: T.Text -> Maybe UTCTime
 parseDate ds =
@@ -240,9 +239,6 @@ getItemLinkOrId :: Atom.Entry -> T.Text
 getItemLinkOrId entry =
   let link = Feed.getItemLink $ Feed.AtomItem entry
    in fromMaybe (Atom.entryId entry) link
-
-tryOrThrow :: (MonadIO m, Exception e1, MonadError e2 m) => (e1 -> e2) -> IO c -> m c
-tryOrThrow mkErr = try >>> liftIO >=> mapLeft mkErr >>> liftEither
 
 fromMaybeOrThrow :: (MonadError e m) => e -> Maybe a -> m a
 fromMaybeOrThrow err = maybeToRight err >>> liftEither

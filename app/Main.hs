@@ -2,9 +2,6 @@ module Main where
 
 import Control.Exception (IOException, displayException, throwIO, try)
 import Control.Monad (filterM, unless, (>=>))
-import Control.Monad.Except (runExceptT)
-import Control.Monad.Logger (filterLogger, runStdoutLoggingT)
-import Control.Monad.Reader (runReaderT)
 import Data.Foldable (traverse_)
 import Data.Function ((&))
 import Data.List (isPrefixOf)
@@ -120,10 +117,7 @@ run env =
                 logInfoIO $ "Config valid: " <> show (length validated) <> " tasks"
         validated ->
           runAllTasks validated
-            & runExceptT
-            & flip runReaderT env
-            & filterLogger (enableLogging env.options)
-            & runStdoutLoggingT
+            & runApp env
             >>= either (logErrorIO . show) pure
 
 validateTasks :: FilePath -> [FeedTask] -> IO [FeedTask]

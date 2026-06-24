@@ -1,0 +1,72 @@
+- warn:
+    lhs: BS.readFile
+    rhs: readFile
+    note: "Use MonadFS 'readFile' instead of direct I/O"
+- warn:
+    lhs: BS.writeFile
+    rhs: writeFile
+    note: "Use MonadFS 'writeFile' instead of direct I/O"
+- warn:
+    lhs: BSC.readFile
+    rhs: readFile
+    note: "Use MonadFS 'readFile' instead of direct I/O"
+- warn:
+    lhs: BSC.writeFile
+    rhs: writeFile
+    note: "Use MonadFS 'writeFile' instead of direct I/O"
+- warn:
+    lhs: LBS.readFile
+    rhs: readFile
+    note: "Use MonadFS 'readFile' instead of direct lazy I/O"
+- warn:
+    lhs: LBS.writeFile
+    rhs: writeFile
+    note: "Use MonadFS 'writeFile' instead of direct lazy I/O"
+- warn:
+    lhs: Data.Aeson.eitherDecodeFileStrict'
+    rhs: readFile
+    note: "Use MonadFS 'readFile' instead of direct file I/O"
+- warn:
+    lhs: Data.Aeson.encodeFile
+    rhs: writeFile
+    note: "Use MonadFS 'writeFile' instead of direct file I/O"
+- warn:
+    lhs: System.IO.readFile
+    rhs: readFile
+    note: "Use MonadFS 'readFile' instead of direct I/O"
+- warn:
+    lhs: System.IO.writeFile
+    rhs: writeFile
+    note: "Use MonadFS 'writeFile' instead of direct I/O"
+- warn:
+    lhs: Data.Text.IO.readFile
+    rhs: readFile
+    note: "Use MonadFS 'readFile' instead of direct I/O"
+- warn:
+    lhs: Data.Text.IO.writeFile
+    rhs: writeFile
+    note: "Use MonadFS 'writeFile' instead of direct I/O"
+- warn:
+    lhs: appendFile
+    rhs: writeFile
+    note: "Use MonadFS 'writeFile' instead of 'appendFile'"
+- warn:
+    lhs: System.Directory.doesFileExist
+    rhs: doesFileExist
+    note: "Use MonadFS 'doesFileExist' instead"
+- warn:
+    lhs: System.Directory.copyFile
+    rhs: copyFile
+    note: "Use MonadFS 'copyFile' instead"
+- warn:
+    lhs: System.Directory.removeFile
+    rhs: removeFile
+    note: "Use MonadFS 'removeFile' instead"
+- warn:
+    lhs: System.Directory.renameFile
+    rhs: renameFile
+    note: "Use MonadFS 'renameFile' instead"
+
+- ignore:
+    name: Use alternative
+    within: FeedRepeat.Types
