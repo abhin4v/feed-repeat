@@ -68,6 +68,7 @@ library
   import:          common-config
   hs-source-dirs:  src
   exposed-modules:
+    FeedRepeat.Types
     FeedRepeat.Lib
     FeedRepeat.Lib.SSRF
     FeedRepeat.Runner

@@ -14,6 +14,7 @@ import Data.Version (showVersion)
 import Data.Yaml qualified as Yaml
 import FeedRepeat.Lib
 import FeedRepeat.Runner
+import FeedRepeat.Types
 import Network.HTTP.Client qualified as HTTP
 import Network.HTTP.Client.TLS qualified as HTTP
 import Options.Applicative qualified as Opt

@@ -1,11 +1,7 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE MultiWayIf #-}
 
 module FeedRepeat.Runner
-  ( Options (..),
-    Env (..),
-    App,
-    runTasksForSource,
+  ( runTasksForSource,
     cacheFileName,
     oldCacheFileName,
     logInfoIO,
@@ -20,12 +16,11 @@ where
 import Control.Arrow ((>>>))
 import Control.Exception (IOException, displayException, throwIO, toException, try)
 import Control.Monad (forM, forM_, unless, void, when, (>=>))
-import Control.Monad.Except (ExceptT, catchError, throwError)
+import Control.Monad.Except (catchError, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Logger
   ( LogLevel (..),
     LogSource,
-    LoggingT,
     MonadLogger,
     logDebugN,
     logErrorN,
@@ -33,7 +28,7 @@ import Control.Monad.Logger
     logWarnN,
     runStdoutLoggingT,
   )
-import Control.Monad.Reader (ReaderT, ask)
+import Control.Monad.Reader (ask)
 import Control.Retry qualified as Retry
 import Crypto.Hash (SHA256)
 import Crypto.Hash qualified as Crypto
@@ -56,7 +51,7 @@ import Data.Time qualified as Time
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.Tuple.Extra (firstM, uncurry3)
 import FeedRepeat.Lib
-import GHC.Generics (Generic)
+import FeedRepeat.Types
 import Network.HTTP.Client qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Network.HTTP.Types.Header qualified as HTTP
@@ -79,23 +74,6 @@ import Text.Feed.Import qualified as Feed
 import Text.Feed.Query qualified as Feed
 import Text.Feed.Types qualified as Feed
 import Prelude hiding (writeFile)
-
-data Options = Options
-  { configPath :: FilePath,
-    outputDir :: FilePath,
-    cacheDir :: FilePath,
-    userAgent :: T.Text,
-    validateOnly :: Bool,
-    verbose :: Bool,
-    quiet :: Bool
-  }
-
-data Env = Env {options :: Options, httpManager :: HTTP.Manager, startTime :: UTCTime}
-
-type App a = ExceptT AppError (ReaderT Env (LoggingT IO)) a
-
-data FeedMetadata = FeedMetadata {etag :: Maybe T.Text, lastModified :: Maybe T.Text}
-  deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
 
 requestTimeoutMicros :: Int
 requestTimeoutMicros = 30_000_000 -- 30 sec

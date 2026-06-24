@@ -8,6 +8,7 @@ import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Format.ISO8601 (iso8601ParseM)
 import FeedRepeat.Lib
+import FeedRepeat.Types
 import SsrfSpec (ssrfSpec)
 import Test.Hspec
 import Test.QuickCheck hiding (NonNegative)
