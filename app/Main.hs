@@ -1,15 +1,13 @@
 module Main where
 
 import Control.Exception (IOException, displayException, throwIO, try)
-import Control.Monad (filterM, forM, forM_, unless, when, (>=>))
-import Control.Monad.Except (catchError, runExceptT)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Logger (LogLevel (..), filterLogger, runStdoutLoggingT)
+import Control.Monad (filterM, unless, (>=>))
+import Control.Monad.Except (runExceptT)
+import Control.Monad.Logger (filterLogger, runStdoutLoggingT)
 import Control.Monad.Reader (runReaderT)
 import Data.Foldable (traverse_)
 import Data.Function ((&))
-import Data.List (isPrefixOf, nub, (\\))
-import Data.List.Extra (nubOrd)
+import Data.List (isPrefixOf)
 import Data.Text qualified as T
 import Data.Time qualified as Time
 import Data.Version (showVersion)
@@ -20,7 +18,7 @@ import Network.HTTP.Client qualified as HTTP
 import Network.HTTP.Client.TLS qualified as HTTP
 import Options.Applicative qualified as Opt
 import PackageInfo_feed_repeat qualified as PI
-import System.Directory (canonicalizePath, copyFile, createDirectoryIfMissing, doesFileExist, removeFile)
+import System.Directory (canonicalizePath, createDirectoryIfMissing)
 import System.Exit (exitFailure)
 import System.FilePath (splitDirectories, (<.>), (</>))
 import Prelude hiding (writeFile)
@@ -120,50 +118,12 @@ run env =
               unless env.options.quiet $ do
                 logInfoIO $ "Config valid: " <> show (length validated) <> " tasks"
         validated ->
-          runTasks validated
+          runAllTasks validated
             & runExceptT
             & flip runReaderT env
-            & filterLogger enableLogging
+            & filterLogger (enableLogging env.options)
             & runStdoutLoggingT
             >>= either (logErrorIO . show) pure
-  where
-    runTasks tasks = do
-      migrateCacheFile env.options.cacheDir tasks
-      forM_ (nubOrd $ map sourceFeedUrl tasks) $ \url ->
-        runTasksForSource (filter ((== url) . sourceFeedUrl) tasks) url
-          `catchError` (logError . show)
-
-    enableLogging _ level
-      | env.options.quiet = level >= LevelWarn
-      | env.options.verbose = True
-      | otherwise = level >= LevelInfo
-
-migrateCacheFile :: FilePath -> [FeedTask] -> App ()
-migrateCacheFile cacheDir tasks = do
-  let sourceFeedUrls = nubOrd $ map sourceFeedUrl tasks
-  forM_ sourceFeedUrls $ \url -> do
-    let oldFileName = cacheDir </> oldCacheFileName url
-        tasksWithSource = [t | t <- tasks, t.sourceFeedUrl == url]
-    liftIO (doesFileExist oldFileName) >>= \case
-      False -> return ()
-      True -> do
-        results <- forM tasksWithSource $ \task -> do
-          let newFileName = cacheDir </> cacheFileName task.sourceFeedUrl task.outputFilename
-          liftIO (doesFileExist newFileName) >>= \case
-            True -> return True
-            False ->
-              liftIO (try (copyFile oldFileName newFileName)) >>= \case
-                Left (e :: IOException) -> do
-                  logWarn $ "Cache migration failed for " <> oldFileName <> ": " <> displayException e
-                  return False
-                Right _ -> do
-                  logInfo $ "Migrated cache file: " <> oldFileName <> " to " <> newFileName
-                  return True
-        when (and results) $
-          liftIO (try (removeFile oldFileName)) >>= \case
-            Right () -> return ()
-            Left (e :: IOException) ->
-              logWarn $ "Failed to remove old cache file " <> oldFileName <> ": " <> displayException e
 
 validateTasks :: FilePath -> [FeedTask] -> IO [FeedTask]
 validateTasks outputDir =
@@ -185,14 +145,3 @@ validateOutputPaths outputDir tasks = flip filterM tasks $ \task -> do
   unless valid $ do
     logErrorIO $ "Output file is outside output directory: " <> outputFP
   return valid
-
-checkDuplicateOutputs :: [FeedTask] -> IO [FeedTask]
-checkDuplicateOutputs tasks =
-  let outputFilenames = map outputFilename tasks
-      duplicates = outputFilenames \\ nub outputFilenames
-   in if null duplicates
-        then return tasks
-        else do
-          logErrorIO "Duplicate output filenames found:"
-          forM_ (nub duplicates) (logErrorIO . ("  " <>))
-          return []

@@ -9,21 +9,23 @@ module FeedRepeat.Runner
     cacheFileName,
     oldCacheFileName,
     logInfoIO,
-    logWarnIO,
     logErrorIO,
-    logDebug,
-    logInfo,
-    logWarn,
-    logError,
+    migrateCacheFile,
+    runAllTasks,
+    enableLogging,
+    checkDuplicateOutputs,
   )
 where
 
 import Control.Arrow ((>>>))
-import Control.Exception (throwIO, toException)
+import Control.Exception (IOException, displayException, throwIO, toException, try)
 import Control.Monad (forM, forM_, unless, void, when, (>=>))
 import Control.Monad.Except (ExceptT, catchError, throwError)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Logger
-  ( LoggingT,
+  ( LogLevel (..),
+    LogSource,
+    LoggingT,
     MonadLogger,
     logDebugN,
     logErrorN,
@@ -42,6 +44,8 @@ import Data.ByteString.Char8 qualified as BSC
 import Data.ByteString.Lazy qualified as LBS
 import Data.Either (isRight)
 import Data.Foldable (traverse_)
+import Data.List (nub, (\\))
+import Data.List.Extra (nubOrd)
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -56,7 +60,7 @@ import GHC.Generics (Generic)
 import Network.HTTP.Client qualified as HTTP
 import Network.HTTP.Types qualified as HTTP
 import Network.HTTP.Types.Header qualified as HTTP
-import System.Directory (renameFile)
+import System.Directory (copyFile, doesFileExist, removeFile, renameFile)
 import System.FilePath (takeDirectory, (<.>), (</>))
 import System.IO (hClose)
 import System.IO.Error (illegalOperationErrorType, mkIOError)
@@ -413,9 +417,8 @@ parseFeedMetadata filePath = do
 saveFeedMetadata :: FilePath -> FeedMetadata -> App ()
 saveFeedMetadata filePath = Aeson.encode >>> writeFileBS filePath
 
-logInfoIO, logWarnIO, logErrorIO :: String -> IO ()
+logInfoIO, logErrorIO :: String -> IO ()
 logInfoIO = runStdoutLoggingT . logInfo
-logWarnIO = runStdoutLoggingT . logWarn
 logErrorIO = runStdoutLoggingT . logError
 
 logDebug, logInfo, logWarn, logError :: (MonadLogger m) => String -> m ()
@@ -435,3 +438,55 @@ writeFileBS fp content = do
     hClose tmpH
     renameFile tmpFP fp
     setFileMode fp fileMode
+
+migrateCacheFile :: FilePath -> [FeedTask] -> App ()
+migrateCacheFile cacheDir tasks = do
+  let sourceFeedUrls = nubOrd $ map sourceFeedUrl tasks
+  forM_ sourceFeedUrls $ \url -> do
+    let oldFileName = cacheDir </> oldCacheFileName url
+        tasksWithSource = [t | t <- tasks, t.sourceFeedUrl == url]
+    liftIO (doesFileExist oldFileName) >>= \case
+      False -> return ()
+      True -> do
+        results <- forM tasksWithSource $ \task -> do
+          let newFileName = cacheDir </> cacheFileName task.sourceFeedUrl task.outputFilename
+          liftIO (doesFileExist newFileName) >>= \case
+            True -> return True
+            False ->
+              liftIO (try (copyFile oldFileName newFileName)) >>= \case
+                Left (e :: IOException) -> do
+                  logWarn $ "Cache migration failed for " <> oldFileName <> ": " <> displayException e
+                  return False
+                Right _ -> do
+                  logInfo $ "Migrated cache file: " <> oldFileName <> " to " <> newFileName
+                  return True
+        when (and results) $
+          liftIO (try (removeFile oldFileName)) >>= \case
+            Right () -> return ()
+            Left (e :: IOException) ->
+              logWarn $ "Failed to remove old cache file " <> oldFileName <> ": " <> displayException e
+
+runAllTasks :: [FeedTask] -> App ()
+runAllTasks tasks = do
+  env <- ask
+  migrateCacheFile env.options.cacheDir tasks
+  forM_ (nubOrd $ map sourceFeedUrl tasks) $ \url ->
+    runTasksForSource (filter ((== url) . sourceFeedUrl) tasks) url
+      `catchError` (logError . show)
+
+enableLogging :: Options -> LogSource -> LogLevel -> Bool
+enableLogging opts _ level
+  | opts.quiet = level >= LevelWarn
+  | opts.verbose = True
+  | otherwise = level >= LevelInfo
+
+checkDuplicateOutputs :: [FeedTask] -> IO [FeedTask]
+checkDuplicateOutputs tasks =
+  let outputFilenames = map outputFilename tasks
+      duplicates = outputFilenames \\ nub outputFilenames
+   in if null duplicates
+        then return tasks
+        else do
+          logErrorIO "Duplicate output filenames found:"
+          forM_ (nub duplicates) (logErrorIO . ("  " <>))
+          return []
